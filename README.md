@@ -15,6 +15,15 @@ Controls
 - **Right-click** Mark mine
 - **Double-click** Reveal all adjacent (except marked mines)
 
+Legend
+------
+
+- ░ Unrevealed tile
+- **\#** Marked as mine
+- **1-8** Number of adjacent mines
+- **\*** Unmarked mine (after game end)
+- **X** Incorrect mark (after game end) 
+
 CLI
 ---
 
