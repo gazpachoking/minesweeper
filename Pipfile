@@ -7,9 +7,8 @@ name = "pypi"
 
 [packages]
 
-prompt-toolkit = "*"
 asciimatics = "*"
-black = "*"
+click = "*"
 
 
 [dev-packages]

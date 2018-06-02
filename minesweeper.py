@@ -1,8 +1,11 @@
 from collections import namedtuple
 from itertools import chain
 from random import shuffle
+import time
+import typing
 
-from asciimatics import screen, event
+from asciimatics import screen, event, widgets
+import click
 
 
 Position = namedtuple("Position", ["x", "y"])
@@ -14,7 +17,6 @@ LOST = "Lost!"
 
 
 class Tile(object):
-
     def __init__(self, mine=False):
         self.mine = mine
         self.revealed = False
@@ -27,7 +29,6 @@ class Tile(object):
 
 
 class Board(object):
-
     def __init__(self, width: int, height: int, num_mines: int):
         assert num_mines < width * height
         self.width = width
@@ -36,10 +37,14 @@ class Board(object):
         self.field = []
         self.place_mines(Position(0, 0))
         self.status = NOT_STARTED
+        self.start_time = None
+        self.end_time = None
 
     def place_mines(self, start_pos: Position):
         self.field.clear()
-        tiles = [Tile(mine=x < self.num_mines) for x in range(self.width * self.height - 1)]
+        tiles = [
+            Tile(mine=x < self.num_mines) for x in range(self.width * self.height - 1)
+        ]
         shuffle(tiles)
         tiles = iter(tiles)
         for row_num in range(self.height):
@@ -57,6 +62,7 @@ class Board(object):
         for tile in self.all_tiles():
             tile.neighbors = sum(1 if t.mine else 0 for t in self._in_range(tile.pos))
         self.status = IN_PROGRESS
+        self.start_time = time.time()
 
     def reveal(self, pos: Position):
         if self.status == NOT_STARTED:
@@ -70,8 +76,18 @@ class Board(object):
         if self.is_lose():
             self.status = LOST
             self.reveal_mines()
+            self.end_time = time.time()
         elif self.is_win():
             self.status = WON
+            self.end_time = time.time()
+
+    @property
+    def play_duration(self) -> float:
+        if not self.start_time:
+            return 0
+        if self.end_time:
+            return self.end_time - self.start_time
+        return time.time() - self.start_time
 
     def reveal_all(self, pos: Position):
         self.reveal(pos)
@@ -88,13 +104,13 @@ class Board(object):
             return
         tile.marked = not tile.marked
 
-    def is_win(self):
+    def is_win(self) -> bool:
         return all(t.mine or t.revealed for t in self.all_tiles())
 
-    def is_lose(self):
+    def is_lose(self) -> bool:
         return any(t.mine and t.revealed for t in self.all_tiles())
 
-    def all_tiles(self):
+    def all_tiles(self) -> typing.Iterable[Tile]:
         return chain(*self.field)
 
     def reveal_mines(self):
@@ -112,26 +128,29 @@ class Board(object):
             for y in range(y1, y2 + 1):
                 yield self.field[y][x]
 
-    def __getitem__(self, pos: Position):
-        return self.field[pos.y][pos.x]
+    def __getitem__(self, pos: Position) -> Tile:
+        return self.field[pos[1]][pos[0]]
 
 
 class Game(object):
-
     def __init__(self, width: int, height: int, mines: int):
-        self.board = Board(width, height, mines)
+        self.width = width
+        self.height = height
+        self.mines = mines
+        self.board = None
         self.screen = None
 
-    def start(self, screen):
+    def run(self, screen):
         self.screen = screen
         screen.clear()
+        self.new()
         while True:
             ev = screen.get_event()
             if isinstance(ev, event.KeyboardEvent):
                 if ev.key_code in (ord("Q"), ord("q")):
                     return
                 elif ev.key_code in (ord("N"), ord("n")):
-                    self.board = Board(15, 15, 30)
+                    self.new()
             elif isinstance(ev, event.MouseEvent):
                 if ev.x >= self.board.width or ev.y > self.board.height:
                     continue
@@ -145,8 +164,11 @@ class Game(object):
                 if ev.buttons:
                     self.screen.clear()
             self.draw_board()
-            self.screen.print_at(self.board.status, 0, self.board.height+1)
+            self.screen.print_at(self.board.status, 0, self.board.height + 1)
             screen.refresh()
+
+    def new(self):
+        self.board = Board(self.width, self.height, self.mines)
 
     def draw_board(self):
         for tile in self.board.all_tiles():
@@ -166,6 +188,18 @@ class Game(object):
             self.screen.print_at(char, tile.pos.x, tile.pos.y, color)
 
 
+@click.command()
+@click.option("--size", nargs=2, type=int)
+@click.option("--mines", type=int)
+def main(size, mines):
+    if not size:
+        size = (15, 15)
+    if not mines:
+        mines = int(size[0] * size[1] * 0.15)
+    # frame = widgets.Frame(screen, screen.height, screen.width)
+    game = Game(size[0], size[1], mines)
+    screen.Screen.wrapper(game.run)
+
+
 if __name__ == "__main__":
-    game = Game(15, 15, 30)
-    screen.Screen.wrapper(game.start)
+    main()
