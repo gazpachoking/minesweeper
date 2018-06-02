@@ -184,11 +184,8 @@ class MineField(Widget):
         pass
 
     def process_event(self, event):
-        if isinstance(event, KeyboardEvent):
-            if event.key_code in (ord("Q"), ord("q")):
-                raise StopApplication("User Quit")
-            elif event.key_code in (ord("N"), ord("n")):
-                self._board.new()
+        if self._board.status in [WON, LOST]:
+            return
         elif isinstance(event, MouseEvent):
             event = self._frame.rebase_event(event)
             if not self.is_mouse_over(event, include_label=False):
@@ -228,6 +225,15 @@ class GameBoard(Frame):
         self.add_layout(layout)
         layout.add_widget(self._mine_field)
         self.fix()
+
+    def process_event(self, event):
+        if isinstance(event, KeyboardEvent):
+            if event.key_code in (ord("Q"), ord("q")):
+                raise StopApplication("User Quit")
+            elif event.key_code in (ord("N"), ord("n")):
+                self._board.new()
+                return
+        super().process_event(event)
 
     def _update(self, frame_no):
         self._time_label.text = str(round(self._board.play_duration))
