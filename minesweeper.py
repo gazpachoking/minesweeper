@@ -4,7 +4,21 @@ from random import shuffle
 import time
 import typing
 
-from asciimatics import screen, event, widgets
+from asciimatics.event import KeyboardEvent, MouseEvent
+from asciimatics.exceptions import StopApplication
+from asciimatics.scene import Scene
+from asciimatics.screen import Screen
+from asciimatics.widgets import (
+    Frame,
+    Label,
+    ListBox,
+    Layout,
+    Divider,
+    Text,
+    Button,
+    TextBox,
+    Widget,
+)
 import click
 
 
@@ -132,60 +146,81 @@ class Board(object):
         return self.field[pos[1]][pos[0]]
 
 
-class Game(object):
-    def __init__(self, width: int, height: int, mines: int):
-        self.width = width
-        self.height = height
-        self.mines = mines
-        self.board = None
-        self.screen = None
+class MineField(Widget):
+    def __init__(self, board):
+        super().__init__("MineField")
+        self._board = board
 
-    def run(self, screen):
-        self.screen = screen
-        screen.clear()
-        self.new()
-        while True:
-            ev = screen.get_event()
-            if isinstance(ev, event.KeyboardEvent):
-                if ev.key_code in (ord("Q"), ord("q")):
-                    return
-                elif ev.key_code in (ord("N"), ord("n")):
-                    self.new()
-            elif isinstance(ev, event.MouseEvent):
-                if ev.x >= self.board.width or ev.y > self.board.height:
-                    continue
-                pos = Position(ev.x, ev.y)
-                if ev.buttons & ev.LEFT_CLICK:
-                    self.board.reveal(pos)
-                if ev.buttons & ev.RIGHT_CLICK:
-                    self.board.mark(pos)
-                if ev.buttons & ev.DOUBLE_CLICK:
-                    self.board.reveal_all(pos)
-                if ev.buttons:
-                    self.screen.clear()
-            self.draw_board()
-            self.screen.print_at(self.board.status, 0, self.board.height + 1)
-            screen.refresh()
-
-    def new(self):
-        self.board = Board(self.width, self.height, self.mines)
-
-    def draw_board(self):
-        for tile in self.board.all_tiles():
-            color = screen.Screen.COLOUR_WHITE
+    def update(self, frame_no):
+        for tile in self._board.all_tiles():
+            color = Screen.COLOUR_WHITE
             if tile.marked:
-                color = screen.Screen.COLOUR_RED
+                color = Screen.COLOUR_RED
                 char = "#"
             elif not tile.revealed:
                 char = "░"
             elif tile.mine:
-                color = screen.Screen.COLOUR_MAGENTA
+                color = Screen.COLOUR_MAGENTA
                 char = "*"
             elif tile.neighbors:
                 char = str(tile.neighbors)
             else:
                 char = " "
-            self.screen.print_at(char, tile.pos.x, tile.pos.y, color)
+            self._frame.canvas.print_at(char, self._x + tile.pos.x, self._y + tile.pos.y, color)
+            self._frame.canvas.print_at("aoeu", 0, 0)
+
+    def reset(self):
+        pass
+
+    def process_event(self, event):
+        if isinstance(event, KeyboardEvent):
+            if event.key_code in (ord("Q"), ord("q")):
+                raise StopApplication('User Quit')
+            elif event.key_code in (ord("N"), ord("n")):
+                self.new()
+        elif isinstance(event, MouseEvent):
+            event = self._frame.rebase_event(event)
+            if not self.is_mouse_over(event, include_label=False):
+                return
+            pos = Position(event.x-self._x, event.y-self._y)
+            if event.buttons & event.LEFT_CLICK:
+                self._board.reveal(pos)
+            if event.buttons & event.RIGHT_CLICK:
+                self._board.mark(pos)
+            if event.buttons & event.DOUBLE_CLICK:
+                self._board.reveal_all(pos)
+
+    def required_height(self, offset, width):
+        return self._board.height
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, val):
+        self._value = val
+
+
+class GameBoard(Frame):
+    def __init__(self, screen, board):
+        super().__init__(screen, board.height+3, board.width+2, title="Minesweeper")
+        layout1 = Layout([1, 1, 1, 1])
+        self.add_layout(layout1)
+        layout1.add_widget(Label("Time"), 0)
+        layout1.add_widget(Label("0"), 1)
+        layout1.add_widget(Label("Mines"), 2)
+        layout1.add_widget(Label(str(board.num_mines)), 3)
+        self._mine_field = MineField(board)
+        layout = Layout([100])
+        self.add_layout(layout)
+        layout.add_widget(self._mine_field)
+        self.fix()
+
+
+def run_scene(screen, board):
+    scenes = [Scene([GameBoard(screen, board)], -1, name="Main")]
+    screen.play(scenes)
 
 
 @click.command()
@@ -197,8 +232,8 @@ def main(size, mines):
     if not mines:
         mines = int(size[0] * size[1] * 0.15)
     # frame = widgets.Frame(screen, screen.height, screen.width)
-    game = Game(size[0], size[1], mines)
-    screen.Screen.wrapper(game.run)
+    board = Board(size[0], size[1], mines)
+    Screen.wrapper(run_scene, arguments=[board])
 
 
 if __name__ == "__main__":
