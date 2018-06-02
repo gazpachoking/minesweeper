@@ -184,19 +184,21 @@ class MineField(Widget):
         pass
 
     def process_event(self, event):
-        if self._board.status in [WON, LOST]:
-            return
-        elif isinstance(event, MouseEvent):
-            event = self._frame.rebase_event(event)
-            if not self.is_mouse_over(event, include_label=False):
+        if isinstance(event, MouseEvent):
+            new_event = self._frame.rebase_event(event)
+            if not self.is_mouse_over(new_event, include_label=False):
+                return event
+            if self._board.status in [WON, LOST]:
                 return
-            pos = Position(event.x - self._x, event.y - self._y)
-            if event.buttons & event.LEFT_CLICK:
+            pos = Position(new_event.x - self._x, new_event.y - self._y)
+            if new_event.buttons & new_event.LEFT_CLICK:
                 self._board.reveal(pos)
-            if event.buttons & event.RIGHT_CLICK:
+            elif new_event.buttons & new_event.RIGHT_CLICK:
                 self._board.mark(pos)
-            if event.buttons & event.DOUBLE_CLICK:
+            elif new_event.buttons & new_event.DOUBLE_CLICK:
                 self._board.reveal_all(pos)
+        else:
+            return event
 
     def required_height(self, offset, width):
         return self._board.height
@@ -212,7 +214,7 @@ class MineField(Widget):
 
 class GameBoard(Frame):
     def __init__(self, screen, board):
-        super().__init__(screen, board.height + 3, board.width + 2, title="Minesweeper")
+        super().__init__(screen, board.height + 4, board.width + 2, title="Minesweeper")
         self._board = board
         layout1 = Layout([1, 1])
         self.add_layout(layout1)
@@ -221,17 +223,27 @@ class GameBoard(Frame):
         layout1.add_widget(self._time_label, 0)
         layout1.add_widget(self._mine_label, 1)
         self._mine_field = MineField(board)
-        layout = Layout([100])
-        self.add_layout(layout)
-        layout.add_widget(self._mine_field)
+        layout2 = Layout([100])
+        self.add_layout(layout2)
+        layout2.add_widget(self._mine_field)
+        layout3 = Layout([1, 1, 1])
+        self.add_layout(layout3)
+        layout3.add_widget(Button("New", self.new_game), 0)
+        layout3.add_widget(Button("Quit", self.quit), 2)
         self.fix()
+
+    def new_game(self):
+        self._board.new()
+
+    def quit(self):
+        raise StopApplication("User Quit")
 
     def process_event(self, event):
         if isinstance(event, KeyboardEvent):
             if event.key_code in (ord("Q"), ord("q")):
-                raise StopApplication("User Quit")
+                self.quit()
             elif event.key_code in (ord("N"), ord("n")):
-                self._board.new()
+                self.new_game()
                 return
         super().process_event(event)
 
