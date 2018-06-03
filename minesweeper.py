@@ -249,7 +249,12 @@ class MineField(Widget):
             if new_event.buttons & new_event.LEFT_CLICK:
                 self._board.reveal(pos)
             elif new_event.buttons & new_event.RIGHT_CLICK:
-                self._board.mark(pos)
+                if self._board[pos].revealed:
+                    for tile in self._board.in_range(pos):
+                        if not tile.marked:
+                            self._board.mark(tile.pos)
+                else:
+                    self._board.mark(pos)
             elif new_event.buttons & new_event.DOUBLE_CLICK:
                 self._board.reveal_all(pos)
         else:
@@ -269,7 +274,7 @@ class MineField(Widget):
 
 class GameBoard(Frame):
     def __init__(self, screen, board):
-        super().__init__(screen, board.height + 4, board.width + 2, title="Minesweeper")
+        super().__init__(screen, board.height + 4, board.width + 2, title="Minesweeper", hover_focus=True)
         self._board = board
         layout1 = Layout([1, 1])
         self.add_layout(layout1)

@@ -1,18 +1,27 @@
 Minesweeper
 ===========
 
-Simple terminal based minesweeper. Cross platform, keyboard or mouse control.
+Simple terminal based minesweeper. Python 3 required.
 
 ![minesweeper](https://gazpachoking.github.io/minesweeper/minesweeper.png)
 
+Features
+--------
+
+- Cross platform
+- Keyboard or mouse (or hybrid) control
+- QoL features:
+  - Highlight adjacent tiles
+  - Clear all adjacent
+  - Mark all adjacent
 
 Controls
 --------
 
 - **N** New game
 - **Q** Quit
+- **Right-click/M** Mark mine/mark all adjacent
 - **Click/Space** Reveal tile
-- **Right-click/M** Mark mine
 - **Double-click/Space** Reveal all adjacent (except marked mines)
 
 Legend
