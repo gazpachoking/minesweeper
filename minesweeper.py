@@ -1,5 +1,5 @@
 from collections import namedtuple
-from itertools import chain
+from itertools import chain, product
 from random import shuffle
 import sys
 import time
@@ -15,10 +15,19 @@ import click
 
 Position = namedtuple("Position", ["x", "y"])
 
+# Game Statuses
 NOT_STARTED = "Not Started"
 IN_PROGRESS = "In Progress"
 WON = "Won!"
 LOST = "Lost!"
+
+# Adjacency Types
+STANDARD = "standard"
+KNIGHTS = "knights"
+ADJACENCY_TYPES = {
+    STANDARD: list(product([-1, 0, 1], [-1, 0, 1])),
+    KNIGHTS: list(chain(product([-1, 1], [-2, 2]), product([-2, 2], [-1, 1]))),
+}
 
 
 class Tile(object):
@@ -34,7 +43,7 @@ class Tile(object):
 
 
 class Board(object):
-    def __init__(self, width: int, height: int, num_mines: int):
+    def __init__(self, width: int, height: int, num_mines: int, mode: str = STANDARD):
         self.field = []
         self.width = width
         self.height = height
@@ -42,6 +51,7 @@ class Board(object):
         self.start_time = 0.0
         self.end_time = 0.0
         self.cursor = Position(0, 0)
+        self.adjacency_mode = mode
         self.status = NOT_STARTED
         self.new(width, height, num_mines)
 
@@ -78,6 +88,7 @@ class Board(object):
                 row.append(tile)
         # Initialize number of neighbors
         for tile in self.all_tiles():
+            a = list(self.in_range(tile.pos))
             tile.neighbors = sum(1 if t.mine else 0 for t in self.in_range(tile.pos))
         self.status = IN_PROGRESS
         self.start_time = time.time()
@@ -135,11 +146,10 @@ class Board(object):
         return chain(*self.field)
 
     def in_range(self, pos: Position):
-        x, y = pos
-        for x1 in range(x - 1, x + 2):
-            for y1 in range(y - 1, y + 2):
-                if self.in_bounds((x1, y1)):
-                    yield self.field[y1][x1]
+        for offset in ADJACENCY_TYPES[self.adjacency_mode]:
+            new_pos = Position(*[sum(v) for v in zip(offset, pos)])
+            if self.in_bounds(new_pos):
+                yield self[new_pos]
 
     def in_bounds(self, pos: Position):
         return (0 <= pos[0] < self.width) and (0 <= pos[1] < self.height)
@@ -244,6 +254,7 @@ class MineField(Widget):
                 return event
             if self._board.status in [WON, LOST]:
                 return
+            self.focus()
             pos = Position(new_event.x - self._x, new_event.y - self._y)
             self._board.cursor = pos
             if new_event.buttons & new_event.LEFT_CLICK:
@@ -274,7 +285,13 @@ class MineField(Widget):
 
 class GameBoard(Frame):
     def __init__(self, screen, board):
-        super().__init__(screen, board.height + 4, board.width + 2, title="Minesweeper", hover_focus=True)
+        super().__init__(
+            screen,
+            board.height + 4,
+            board.width + 2,
+            title="Minesweeper",
+            hover_focus=False,
+        )
         self._board = board
         layout1 = Layout([1, 1])
         self.add_layout(layout1)
@@ -283,9 +300,9 @@ class GameBoard(Frame):
         layout1.add_widget(self._time_label, 0)
         layout1.add_widget(self._mine_label, 1)
         self._mine_field = MineField(board)
-        layout2 = Layout([100])
-        self.add_layout(layout2)
-        layout2.add_widget(self._mine_field)
+        self._layout2 = Layout([100])
+        self.add_layout(self._layout2)
+        self._layout2.add_widget(self._mine_field)
         layout3 = Layout([1, 1, 1])
         self.add_layout(layout3)
         layout3.add_widget(Button("New", self.new_game), 0)
@@ -305,6 +322,10 @@ class GameBoard(Frame):
             elif event.key_code in (ord("N"), ord("n")):
                 self.new_game()
                 return
+        elif isinstance(event, MouseEvent):
+            new_event = self.rebase_event(event)
+            if self._mine_field.is_mouse_over(new_event):
+                self.switch_focus(self._layout2, 0, 0)
         super().process_event(event)
 
     def _update(self, frame_no):
@@ -321,12 +342,13 @@ def run_scene(screen, board):
 @click.command()
 @click.option("--size", nargs=2, type=int)
 @click.option("--mines", type=int)
-def main(size, mines):
+@click.option("--mode", default=STANDARD, type=click.Choice(ADJACENCY_TYPES))
+def main(size, mines, mode):
     if not size:
         size = (15, 15)
     if not mines:
         mines = int(size[0] * size[1] * 0.15)
-    board = Board(size[0], size[1], mines)
+    board = Board(size[0], size[1], mines, mode)
     while True:
         try:
             Screen.wrapper(run_scene, arguments=[board])

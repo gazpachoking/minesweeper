@@ -10,6 +10,7 @@ Features
 
 - Cross platform
 - Keyboard or mouse (or hybrid) control
+- Standard and Knight's move modes
 - QoL features:
   - Highlight adjacent tiles
   - Clear all adjacent
