@@ -1,7 +1,7 @@
 Minesweeper
 ===========
 
-Simple terminal based minesweeper. Cross platform, mouse required.
+Simple terminal based minesweeper. Cross platform, keyboard or mouse control.
 
 ![minesweeper](https://gazpachoking.github.io/minesweeper/minesweeper.png)
 
@@ -11,9 +11,9 @@ Controls
 
 - **N** New game
 - **Q** Quit
-- **Click** Reveal tile
-- **Right-click** Mark mine
-- **Double-click** Reveal all adjacent (except marked mines)
+- **Click/Space** Reveal tile
+- **Right-click/M** Mark mine
+- **Double-click/Space** Reveal all adjacent (except marked mines)
 
 Legend
 ------

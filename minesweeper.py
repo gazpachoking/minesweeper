@@ -9,7 +9,7 @@ from asciimatics.event import KeyboardEvent, MouseEvent
 from asciimatics.exceptions import ResizeScreenError, StopApplication
 from asciimatics.scene import Scene
 from asciimatics.screen import Screen
-from asciimatics.widgets import Frame, Label, Layout, Divider, Text, Button, Widget
+from asciimatics.widgets import Frame, Label, Layout, Button, Widget
 import click
 
 
@@ -41,6 +41,7 @@ class Board(object):
         self.num_mines = num_mines
         self.start_time = 0.0
         self.end_time = 0.0
+        self.cursor = Position(0, 0)
         self.status = NOT_STARTED
         self.new(width, height, num_mines)
 
@@ -77,7 +78,7 @@ class Board(object):
                 row.append(tile)
         # Initialize number of neighbors
         for tile in self.all_tiles():
-            tile.neighbors = sum(1 if t.mine else 0 for t in self._in_range(tile.pos))
+            tile.neighbors = sum(1 if t.mine else 0 for t in self.in_range(tile.pos))
         self.status = IN_PROGRESS
         self.start_time = time.time()
 
@@ -111,7 +112,7 @@ class Board(object):
 
     def reveal_all(self, pos: Position):
         self.reveal(pos)
-        for neighbor in self._in_range(pos):
+        for neighbor in self.in_range(pos):
             if neighbor.marked:
                 continue
             self.reveal(neighbor.pos)
@@ -133,15 +134,15 @@ class Board(object):
     def all_tiles(self) -> typing.Iterable[Tile]:
         return chain(*self.field)
 
-    def _in_range(self, pos: Position):
+    def in_range(self, pos: Position):
         x, y = pos
-        x1 = max(0, min(x - 1, self.width - 1))
-        x2 = max(0, min(x + 1, self.width - 1))
-        y1 = max(0, min(y - 1, self.height - 1))
-        y2 = max(0, min(y + 1, self.height - 1))
-        for x in range(x1, x2 + 1):
-            for y in range(y1, y2 + 1):
-                yield self.field[y][x]
+        for x1 in range(x - 1, x + 2):
+            for y1 in range(y - 1, y + 2):
+                if self.in_bounds((x1, y1)):
+                    yield self.field[y1][x1]
+
+    def in_bounds(self, pos: Position):
+        return (0 <= pos[0] < self.width) and (0 <= pos[1] < self.height)
 
     def __getitem__(self, pos: Position) -> Tile:
         return self.field[pos[1]][pos[0]]
@@ -153,8 +154,11 @@ class MineField(Widget):
         self._board = board
 
     def update(self, frame_no):
+        adjacent = list(self._board.in_range(self._board.cursor))
+        cursor = self._board[self._board.cursor]
         for tile in self._board.all_tiles():
             color = Screen.COLOUR_WHITE
+            bg = Screen.COLOUR_BLACK
             if tile.marked:
                 color = Screen.COLOUR_RED
                 char = "#"
@@ -175,22 +179,73 @@ class MineField(Widget):
                 elif tile.marked:
                     color = Screen.COLOUR_RED
                     char = "X"
-            self._frame.canvas.print_at(
-                char, self._x + tile.pos.x, self._y + tile.pos.y, color
+            else:
+                if tile is cursor:
+                    bg = Screen.COLOUR_YELLOW
+                if cursor.revealed:
+                    if tile in adjacent and not tile.revealed:
+                        bg = Screen.COLOUR_CYAN
+            self._frame.canvas.paint(
+                char, self._x + tile.pos.x, self._y + tile.pos.y, color, bg=bg
             )
-            self._frame.canvas.print_at("aoeu", 0, 0)
 
     def reset(self):
         pass
 
     def process_event(self, event):
-        if isinstance(event, MouseEvent):
+        if self._has_focus and isinstance(event, KeyboardEvent):
+            if event.key_code in (
+                Screen.KEY_RIGHT,
+                Screen.KEY_UP,
+                Screen.KEY_LEFT,
+                Screen.KEY_DOWN,
+                Screen.KEY_PAGE_DOWN,
+                Screen.KEY_PAGE_UP,
+                Screen.KEY_END,
+                Screen.KEY_HOME,
+            ):
+                new_x, new_y = self._board.cursor
+                if event.key_code == Screen.KEY_DOWN:
+                    new_y += 1
+                elif event.key_code == Screen.KEY_UP:
+                    new_y -= 1
+                elif event.key_code == Screen.KEY_RIGHT:
+                    new_x += 1
+                elif event.key_code == Screen.KEY_LEFT:
+                    new_x -= 1
+                elif event.key_code == Screen.KEY_PAGE_UP:
+                    new_y = 0
+                elif event.key_code == Screen.KEY_PAGE_DOWN:
+                    new_y = self._board.height - 1
+                elif event.key_code == Screen.KEY_HOME:
+                    new_x = 0
+                elif event.key_code == Screen.KEY_END:
+                    new_x = self._board.width - 1
+                new_pos = Position(new_x, new_y)
+                if self._board.in_bounds(new_pos):
+                    self._board.cursor = new_pos
+            elif event.key_code == ord(" "):
+                if self._board[self._board.cursor].revealed:
+                    self._board.reveal_all(self._board.cursor)
+                else:
+                    self._board.reveal(self._board.cursor)
+            elif event.key_code in (ord("M"), ord("m")):
+                if self._board[self._board.cursor].revealed:
+                    for tile in self._board.in_range(self._board.cursor):
+                        if not tile.marked:
+                            self._board.mark(tile.pos)
+                else:
+                    self._board.mark(self._board.cursor)
+            else:
+                return event
+        elif isinstance(event, MouseEvent):
             new_event = self._frame.rebase_event(event)
             if not self.is_mouse_over(new_event, include_label=False):
                 return event
             if self._board.status in [WON, LOST]:
                 return
             pos = Position(new_event.x - self._x, new_event.y - self._y)
+            self._board.cursor = pos
             if new_event.buttons & new_event.LEFT_CLICK:
                 self._board.reveal(pos)
             elif new_event.buttons & new_event.RIGHT_CLICK:
