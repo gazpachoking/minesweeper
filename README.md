@@ -38,7 +38,7 @@ CLI
 ---
 
 - **--size X Y** Specify field size
-- **--mines N** Specify number of mines
+- **--mines N** Specify number (or fraction of board) of mines
 
 
   

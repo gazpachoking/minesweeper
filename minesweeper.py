@@ -341,13 +341,13 @@ def run_scene(screen, board):
 
 @click.command()
 @click.option("--size", nargs=2, type=int)
-@click.option("--mines", type=int)
+@click.option("--mines", default=0.15, type=float)
 @click.option("--mode", default=STANDARD, type=click.Choice(ADJACENCY_TYPES))
 def main(size, mines, mode):
     if not size:
         size = (15, 15)
-    if not mines:
-        mines = int(size[0] * size[1] * 0.15)
+    if mines < 1:
+        mines = int(size[0] * size[1] * mines)
     board = Board(size[0], size[1], mines, mode)
     while True:
         try:
