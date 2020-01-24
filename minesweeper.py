@@ -249,24 +249,23 @@ class MineField(Widget):
             else:
                 return event
         elif isinstance(event, MouseEvent):
-            new_event = self._frame.rebase_event(event)
-            if not self.is_mouse_over(new_event, include_label=False):
+            if not self.is_mouse_over(event, include_label=False):
                 return event
             if self._board.status in [WON, LOST]:
                 return
             self.focus()
-            pos = Position(new_event.x - self._x, new_event.y - self._y)
+            pos = Position(event.x - self._x, event.y - self._y)
             self._board.cursor = pos
-            if new_event.buttons & new_event.LEFT_CLICK:
+            if event.buttons & event.LEFT_CLICK:
                 self._board.reveal(pos)
-            elif new_event.buttons & new_event.RIGHT_CLICK:
+            elif event.buttons & event.RIGHT_CLICK:
                 if self._board[pos].revealed:
                     for tile in self._board.in_range(pos):
                         if not tile.marked:
                             self._board.mark(tile.pos)
                 else:
                     self._board.mark(pos)
-            elif new_event.buttons & new_event.DOUBLE_CLICK:
+            elif event.buttons & event.DOUBLE_CLICK:
                 self._board.reveal_all(pos)
         else:
             return event
