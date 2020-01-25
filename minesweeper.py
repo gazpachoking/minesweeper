@@ -1,4 +1,5 @@
 from collections import namedtuple
+from enum import Enum
 from itertools import chain, product
 from random import shuffle
 import sys
@@ -11,15 +12,18 @@ from asciimatics.scene import Scene
 from asciimatics.screen import Screen
 from asciimatics.widgets import Frame, Label, Layout, Button, Widget
 import click
+import z3
 
 
 Position = namedtuple("Position", ["x", "y"])
 
 # Game Statuses
-NOT_STARTED = "Not Started"
-IN_PROGRESS = "In Progress"
-WON = "Won!"
-LOST = "Lost!"
+class GameState(Enum):
+    NOT_STARTED = "Not Started"
+    IN_PROGRESS = "In Progress"
+    WON = "Won!"
+    LOST = "Lost!"
+
 
 # Adjacency Types
 STANDARD = "standard"
@@ -30,83 +34,99 @@ ADJACENCY_TYPES = {
 }
 
 
-class Tile(object):
-    def __init__(self, mine=False):
-        self.mine = mine
+class Tile:
+    def __init__(self, pos: Position, board : 'Board'):
+        self.pos = pos
+        self.board = board
+        self.determined = False
+        self.mine = False
         self.revealed = False
         self.marked = False
-        self.neighbors = None
-        self.pos = None
+        self.adjacent_mines = 0
+
+    @property
+    def undetermined(self):
+        return not self.determined
+
+    @property
+    def var_name(self):
+        return f"t{self.pos.x},{self.pos.y}"
+
+    @property
+    def var(self):
+        return z3.Bool(self.var_name)
 
     def __repr__(self):
-        return f"Tile(mine={self.mine})"
+        return f"Tile(pos={self.pos})"
 
 
-class Board(object):
+class Board:
     def __init__(self, width: int, height: int, num_mines: int, mode: str = STANDARD):
-        self.field = []
+        assert num_mines < self.width * self.height
+        self.field = {}
         self.width = width
         self.height = height
-        self.num_mines = num_mines
+        self.total_mines = num_mines
         self.start_time = 0.0
         self.end_time = 0.0
         self.cursor = Position(0, 0)
         self.adjacency_mode = mode
-        self.status = NOT_STARTED
-        self.new(width, height, num_mines)
+        self.status = GameState.NOT_STARTED
+        self.place_tiles()
 
-    def new(self, width: int = None, height: int = None, num_mines: int = None):
-        if width is not None:
-            self.width = width
-        if height is not None:
-            self.height = height
-        if num_mines is not None:
-            self.num_mines = num_mines
-        self.place_mines(Position(0, 0))
-        self.status = NOT_STARTED
-        self.start_time = None
-        self.end_time = None
+    @property
+    def placed_mines(self):
+        return sum(1 if t.determined and t.mine else 0 for t in self.all_tiles())
 
-    def place_mines(self, start_pos: Position):
-        assert self.num_mines < self.width * self.height
+    @property
+    def unplaced_mines(self):
+        return self.total_mines - self.placed_mines
+
+    def place_tiles(self):
         self.field.clear()
-        tiles = [
-            Tile(mine=x < self.num_mines) for x in range(self.width * self.height - 1)
-        ]
-        shuffle(tiles)
-        tiles = iter(tiles)
         for row_num in range(self.height):
-            row = []
-            self.field.append(row)
             for col_num in range(self.width):
-                pos = Position(col_num, row_num)
-                if pos == start_pos:
-                    tile = Tile(mine=False)
-                else:
-                    tile = next(tiles)
-                tile.pos = pos
-                row.append(tile)
-        # Initialize number of neighbors
-        for tile in self.all_tiles():
-            a = list(self.in_range(tile.pos))
-            tile.neighbors = sum(1 if t.mine else 0 for t in self.in_range(tile.pos))
-        self.status = IN_PROGRESS
+                pos = Position(row_num, col_num)
+                self.field[pos] = Tile(pos=pos, board=self)
+        self.status = GameState.IN_PROGRESS
         self.start_time = time.time()
 
+    def undetermined_tiles(self):
+        return [t for t in self.all_tiles() if t.undetermined]
+
+    def solver(self):
+        solver = z3.Solver()
+        # The sum of all undetermined tiles that are a mine must equal the number of unplaced mines
+        solver.add(z3.PbEq([(t.var, 1) for t in self.undetermined_tiles()], self.unplaced_mines))
+        # The sum of all undetermined tiles touching a revealed number must equal that number
+        for t in self.all_tiles():
+            if t.determined and t.adjacent_mines and not t.mine:
+                known_mine_neighbors = sum(
+                    1 for n in self.in_range(t) if n.determined and n.mine
+                )
+                if known_mine_neighbors < t.adjacent_mines:
+                    solver.add(
+                        z3.PbEq(
+                            [(n.var, 1) for n in self.in_range(t) if n.undetermined],
+                            t.adjacent_mines - known_mine_neighbors,
+                        )
+                    )
+        return solver
+
     def reveal(self, pos: Position):
-        if self.status == NOT_STARTED:
-            self.place_mines(pos)
         tile = self[pos]
         if tile.marked or tile.revealed:
             return
+        if not tile.determined:
+            pass
         tile.revealed = True
         if not tile.neighbors:
             self.reveal_all(tile.pos)
         if self.is_lose():
-            self.status = LOST
+            self.status = GameState.LOST
             self.end_time = time.time()
         elif self.is_win():
-            self.status = WON
+            self.status = GameState.WON
             self.end_time = time.time()
 
     @property
@@ -118,8 +138,8 @@ class Board(object):
         return time.time() - self.start_time
 
     @property
-    def mines_left(self) -> int:
-        return self.num_mines - sum(1 if t.marked else 0 for t in self.all_tiles())
+    def unmarked_mines(self) -> int:
+        return self.total_mines - sum(1 if t.marked else 0 for t in self.all_tiles())
 
     def reveal_all(self, pos: Position):
         self.reveal(pos)
@@ -129,7 +149,7 @@ class Board(object):
             self.reveal(neighbor.pos)
 
     def mark(self, pos: Position):
-        if self.status == NOT_STARTED:
+        if self.status == GameState.NOT_STARTED:
             return
         tile = self[pos]
         if tile.revealed:
@@ -143,7 +163,7 @@ class Board(object):
         return any(t.mine and t.revealed for t in self.all_tiles())
 
     def all_tiles(self) -> typing.Iterable[Tile]:
-        return chain(*self.field)
+        return self.field.values()
 
     def in_range(self, pos: Position):
         for offset in ADJACENCY_TYPES[self.adjacency_mode]:
@@ -152,10 +172,11 @@ class Board(object):
                 yield self[new_pos]
 
     def in_bounds(self, pos: Position):
-        return (0 <= pos[0] < self.width) and (0 <= pos[1] < self.height)
+        return pos in self.field
+        #return (0 <= pos[0] < self.width) and (0 <= pos[1] < self.height)
 
     def __getitem__(self, pos: Position) -> Tile:
-        return self.field[pos[1]][pos[0]]
+        return self.field[pos]
 
 
 class MineField(Widget):
@@ -178,7 +199,7 @@ class MineField(Widget):
                 char = str(tile.neighbors)
             else:
                 char = " "
-            if self._board.status in [WON, LOST]:
+            if self._board.status in [GameState.WON, GameState.LOST]:
                 if tile.marked and tile.mine:
                     color = Screen.COLOUR_GREEN
                 elif tile.mine:
@@ -251,7 +272,7 @@ class MineField(Widget):
         elif isinstance(event, MouseEvent):
             if not self.is_mouse_over(event, include_label=False):
                 return event
-            if self._board.status in [WON, LOST]:
+            if self._board.status in [GameState.WON, GameState.LOST]:
                 return
             self.focus()
             pos = Position(event.x - self._x, event.y - self._y)

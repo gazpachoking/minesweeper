@@ -9,6 +9,10 @@ license = "MIT"
 python = "^3.6"
 asciimatics = "^1.11.0"
 click = "^7.0"
+z3-solver = {version = "^4.8.7", optional = true}
+
+[tool.poetry.extras]
+noguess = ["z3-solver"]
 
 [tool.poetry.dev-dependencies]
 
