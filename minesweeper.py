@@ -182,6 +182,7 @@ class Board:
         if not tile.num_adjacent_mines:
             self.reveal_all(tile.pos)
         if self.is_loss():
+            self.status = GameState.LOST
             self.end_time = time.time()
         elif self.is_win():
             self.status = GameState.WON
