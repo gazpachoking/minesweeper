@@ -43,10 +43,7 @@ class Tile:
         self.mine = False
         self.revealed = False
         self.marked = False
-
-    @property
-    def num_adjacent_mines(self) -> int:
-        return sum(1 for n in self.neighbors if n.mine)
+        self.num_adjacent_mines = None
 
     @property
     def undetermined(self) -> bool:
@@ -58,7 +55,7 @@ class Tile:
 
     @property
     def on_boundary(self) -> bool:
-        return any(n.determined != self.determined for n in self.neighbors)
+        return any(n.revealed != self.revealed for n in self.neighbors)
 
     @property
     def var(self):
@@ -81,6 +78,7 @@ class Board:
         self.adjacency_mode = mode
         self.status = GameState.NOT_STARTED
         self.place_tiles()
+        self.recalc()
 
     def new(self):
         self.place_tiles()
@@ -88,7 +86,7 @@ class Board:
 
     @property
     def num_determined_mines(self) -> int:
-        return sum(1 for t in self.determined_tiles if t.mine)
+        return sum(1 for t in self.tiles(determined=True, mine=True))
 
     @property
     def num_undetermined_mines(self) -> int:
@@ -98,17 +96,17 @@ class Board:
     def all_tiles(self) -> typing.Iterable[Tile]:
         return self.field.values()
 
-    @property
-    def undetermined_tiles(self) -> typing.List[Tile]:
-        return [t for t in self.all_tiles if t.undetermined]
-
-    @property
-    def determined_tiles(self) -> typing.List[Tile]:
-        return [t for t in self.all_tiles if t.determined]
-
-    @property
-    def boundary_tiles(self) -> typing.List[Tile]:
-        return [t for t in self.undetermined_tiles if any(n.determined for n in t.neighbors)]
+    def tiles(self, revealed=None, determined=None, boundary=None, mine=None) -> typing.Iterable[Tile]:
+        for tile in self.all_tiles:
+            if revealed is not None and tile.revealed != revealed:
+                continue
+            if determined is not None and tile.determined != determined:
+                continue
+            if boundary is not None and tile.on_boundary != boundary:
+                continue
+            if mine is not None and tile.mine != mine:
+                continue
+            yield tile
 
     def place_tiles(self):
         self.field.clear()
@@ -122,34 +120,40 @@ class Board:
     def solver(self):
         solver = z3.Solver()
         # Cheat a bit to randomize possible solution by adding constraints in a random order
-        undetermined = list(self.undetermined_tiles)
-        determined = list(self.determined_tiles)
+        undetermined = list(self.tiles(determined=False))
+        revealed_boundary = list(self.tiles(revealed=True, boundary=True))
         shuffle(undetermined)
-        shuffle(determined)
+        shuffle(revealed_boundary)
 
         # The sum of all undetermined tiles that are a mine must equal the number of unplaced mines
         solver.add(z3.PbEq([(t.var, 1) for t in undetermined], self.num_undetermined_mines))
 
         # The sum of all undetermined tiles touching a revealed number must equal that number
-        for t in determined:
-            if t.on_boundary and not t.mine:
-                known_mine_neighbors = sum(
-                    1 for n in t.neighbors if n.determined and n.mine
+        for t in revealed_boundary:
+            known_mine_neighbors = sum(
+                1 for n in t.neighbors if n.determined and n.mine
+            )
+            solver.add(
+                z3.PbEq(
+                    [(n.var, 1) for n in t.neighbors if n.undetermined],
+                    t.num_adjacent_mines - known_mine_neighbors,
                 )
-                solver.add(
-                    z3.PbEq(
-                        [(n.var, 1) for n in t.neighbors if n.undetermined],
-                        t.num_adjacent_mines - known_mine_neighbors,
-                    )
-                )
+            )
         return solver
 
     def recalc(self):
+        """Places all mines on tiles randomly, but in accordance with revealed hints."""
         solver = self.solver()
         assert solver.check() == z3.sat
         model = solver.model()
-        for t in self.undetermined_tiles:
+        for t in self.tiles(determined=False):
             t.mine = bool(model[t.var])
+        # Lock in certain tiles that must/must not be mines.
+        # for t in self.tiles(revealed=False, boundary=True):
+        #     can_be_mine = solver.check(t.var) == z3.sat
+        #     can_be_open = solver.check(z3.Not(t.var)) == z3.sat
+        #     if not (can_be_mine and can_be_open):
+        #         t.determined = True
 
     def reveal(self, pos: Position):
         tile = self[pos]
@@ -157,29 +161,27 @@ class Board:
             return
 
         changed = False
-        if not len(self.determined_tiles):
+        if not any(self.tiles(determined=True)):
             # First click
             changed = tile.mine
             tile.mine = False
-            tile.determined = True
         else:
-            solver = self.solver()
-            if tile in self.boundary_tiles:
+            if tile.mine:
+                solver = self.solver()
                 can_be_mine = solver.check(tile.var) == z3.sat
                 can_be_open = solver.check(z3.Not(tile.var)) == z3.sat
                 if can_be_open:
                     changed = tile.mine
                     tile.mine = False
-            tile.determined = True
 
         tile.determined = True
         if changed:
             self.recalc()
+        tile.num_adjacent_mines = sum(1 for n in tile.neighbors if n.mine)
         tile.revealed = True
         if not tile.num_adjacent_mines:
             self.reveal_all(tile.pos)
         if self.is_loss():
-            self.status = GameState.LOST
             self.end_time = time.time()
         elif self.is_win():
             self.status = GameState.WON
