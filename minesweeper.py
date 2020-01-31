@@ -192,13 +192,14 @@ class Board:
         if changed:
             self.replace_mines()
 
+        tile.revealed = True
+
         if tile.mine:
             self.status = GameState.LOST
             self.end_time = time.time()
             return
 
         tile.num_adjacent_mines = sum(1 for n in tile.neighbors if n.mine)
-        tile.revealed = True
         if not tile.num_adjacent_mines:
             self.reveal_all(tile.pos, cascade=True)
         # Once all new tiles have been revealed, lock in any tiles which can no longer be changed
@@ -269,11 +270,12 @@ class MineField(Widget):
                 color = Screen.COLOUR_RED
                 char = "＃"
             elif not tile.revealed:
-                char = "░" * CHAR_WIDTH
+                bg = Screen.COLOUR_WHITE
+                char = "\u3000"  # Full width space
             elif tile.num_adjacent_mines:
-                char = str(chr(ord(str(tile.num_adjacent_mines)) + 0xFEE0))
+                char = chr(ord(str(tile.num_adjacent_mines)) + 0xFEE0)
             else:
-                char = " " * CHAR_WIDTH
+                char = "\u3000"
             if self._board.status in [GameState.WON, GameState.LOST]:
                 if tile.marked and tile.mine:
                     color = Screen.COLOUR_GREEN
@@ -281,10 +283,12 @@ class MineField(Widget):
                     color = Screen.COLOUR_GREEN
                     if tile.revealed:
                         color = Screen.COLOUR_RED
-                    char = "*" * CHAR_WIDTH
+                    char = "＊"
                 elif tile.marked:
                     color = Screen.COLOUR_RED
-                    char = "X" * CHAR_WIDTH
+                    char = "Ｘ"
+                if tile.determined and not tile.mine and not tile.revealed:
+                    bg = Screen.COLOUR_YELLOW
             else:
                 # Debug (cheater) coloring
                 # if not tile.revealed and tile.determined:
