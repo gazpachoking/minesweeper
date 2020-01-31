@@ -35,6 +35,9 @@ ADJACENCY_TYPES = {
 }
 
 
+CHAR_WIDTH = 2
+
+
 class Tile:
     def __init__(self, pos: Position, board : 'Board'):
         self.pos = pos
@@ -115,7 +118,6 @@ class Board:
                 pos = Position(col_num, row_num)
                 self.field[pos] = Tile(pos=pos, board=self)
         self.status = GameState.IN_PROGRESS
-        self.start_time = time.time()
 
     def solver(self):
         solver = z3.Solver()
@@ -149,13 +151,15 @@ class Board:
         for t in self.tiles(determined=False):
             t.mine = bool(model[t.var])
         # Lock in certain tiles that must/must not be mines.
-        # for t in self.tiles(revealed=False, boundary=True):
-        #     can_be_mine = solver.check(t.var) == z3.sat
-        #     can_be_open = solver.check(z3.Not(t.var)) == z3.sat
-        #     if not (can_be_mine and can_be_open):
-        #         t.determined = True
+        for t in self.tiles(revealed=False):
+            can_be_mine = solver.check(t.var) == z3.sat
+            can_be_open = solver.check(z3.Not(t.var)) == z3.sat
+            if not (can_be_mine and can_be_open):
+                t.determined = True
 
     def reveal(self, pos: Position):
+        if self.status != GameState.IN_PROGRESS:
+            return
         tile = self[pos]
         if tile.marked or tile.revealed:
             return
@@ -163,9 +167,12 @@ class Board:
         changed = False
         if not any(self.tiles(determined=True)):
             # First click
+            self.start_time = time.time()
             changed = tile.mine
             tile.mine = False
-        else:
+            tile.determined = True
+
+        if not tile.determined:
             if tile.mine:
                 solver = self.solver()
                 can_be_mine = solver.check(tile.var) == z3.sat
@@ -174,17 +181,19 @@ class Board:
                     changed = tile.mine
                     tile.mine = False
 
+        if tile.mine:
+            self.status = GameState.LOST
+            self.end_time = time.time()
+            return
         tile.determined = True
         if changed:
             self.recalc()
         tile.num_adjacent_mines = sum(1 for n in tile.neighbors if n.mine)
         tile.revealed = True
+        self.recalc()
         if not tile.num_adjacent_mines:
             self.reveal_all(tile.pos)
-        if self.is_loss():
-            self.status = GameState.LOST
-            self.end_time = time.time()
-        elif self.is_win():
+        if self.is_win():
             self.status = GameState.WON
             self.end_time = time.time()
 
@@ -208,7 +217,7 @@ class Board:
             self.reveal(neighbor.pos)
 
     def mark(self, pos: Position):
-        if self.status == GameState.NOT_STARTED:
+        if self.status != GameState.IN_PROGRESS:
             return
         tile = self[pos]
         if tile.revealed:
@@ -247,13 +256,13 @@ class MineField(Widget):
             bg = Screen.COLOUR_BLACK
             if tile.marked:
                 color = Screen.COLOUR_RED
-                char = "#"
+                char = "＃"
             elif not tile.revealed:
-                char = "░"
+                char = "░" * CHAR_WIDTH
             elif tile.num_adjacent_mines:
-                char = str(tile.num_adjacent_mines)
+                char = str(chr(ord(str(tile.num_adjacent_mines)) + 0xFEE0))
             else:
-                char = " "
+                char = " " * CHAR_WIDTH
             if self._board.status in [GameState.WON, GameState.LOST]:
                 if tile.marked and tile.mine:
                     color = Screen.COLOUR_GREEN
@@ -261,20 +270,23 @@ class MineField(Widget):
                     color = Screen.COLOUR_GREEN
                     if tile.revealed:
                         color = Screen.COLOUR_RED
-                    char = "*"
+                    char = "*" * CHAR_WIDTH
                 elif tile.marked:
                     color = Screen.COLOUR_RED
-                    char = "X"
+                    char = "X" * CHAR_WIDTH
             else:
-                if tile.undetermined:
-                    bg = Screen.COLOUR_GREEN
+                if not tile.revealed and tile.determined:
+                    if tile.mine:
+                        color = Screen.COLOUR_RED
+                    else:
+                        color = Screen.COLOUR_GREEN
                 if tile is cursor:
                     bg = Screen.COLOUR_YELLOW
                 if cursor.revealed:
                     if tile in adjacent and not tile.revealed:
                         bg = Screen.COLOUR_CYAN
             self._frame.canvas.paint(
-                char, self._x + tile.pos.x, self._y + tile.pos.y, color, bg=bg
+                char, self._x + (tile.pos.x * CHAR_WIDTH), self._y + tile.pos.y, color, bg=bg
             )
 
     def reset(self):
@@ -324,6 +336,8 @@ class MineField(Widget):
                             self._board.mark(tile.pos)
                 else:
                     self._board.mark(self._board.cursor)
+            elif event.key_code in (ord("b"), ord("B")):
+                self._board.recalc()
             else:
                 return event
         elif isinstance(event, MouseEvent):
@@ -332,7 +346,7 @@ class MineField(Widget):
             if self._board.status in [GameState.WON, GameState.LOST]:
                 return
             self.focus()
-            pos = Position(event.x - self._x, event.y - self._y)
+            pos = Position(int(event.x / CHAR_WIDTH) - self._x, event.y - self._y)
             if not self._board.in_bounds(pos):
                 return
             self._board.cursor = pos
@@ -367,7 +381,7 @@ class GameBoard(Frame):
         super().__init__(
             screen,
             board.height + 4,
-            board.width + 2,
+            (board.width * CHAR_WIDTH) + 2,
             title="Minesweeper",
             hover_focus=False,
         )
@@ -428,7 +442,7 @@ def main(size, mines, mode):
     board = Board(size[0], size[1], mines, mode)
     while True:
         try:
-            Screen.wrapper(run_scene, arguments=[board])
+            Screen.wrapper(run_scene, arguments=[board], unicode_aware=True)
             sys.exit(0)
         except ResizeScreenError as e:
             pass
