@@ -157,7 +157,7 @@ class Board:
             if not (can_be_mine and can_be_open):
                 t.determined = True
 
-    def reveal(self, pos: Position):
+    def reveal(self, pos: Position, cascade=False):
         if self.status != GameState.IN_PROGRESS:
             return
         tile = self[pos]
@@ -172,7 +172,7 @@ class Board:
             tile.mine = False
             tile.determined = True
 
-        if not tile.determined:
+        if not tile.determined and not cascade:
             if tile.mine:
                 solver = self.solver()
                 can_be_mine = solver.check(tile.var) == z3.sat
@@ -190,9 +190,10 @@ class Board:
             self.recalc()
         tile.num_adjacent_mines = sum(1 for n in tile.neighbors if n.mine)
         tile.revealed = True
-        self.recalc()
         if not tile.num_adjacent_mines:
-            self.reveal_all(tile.pos)
+            self.reveal_all(tile.pos, cascade=True)
+        if not cascade:
+            self.recalc()
         if self.is_win():
             self.status = GameState.WON
             self.end_time = time.time()
@@ -209,12 +210,12 @@ class Board:
     def unmarked_mines(self) -> int:
         return self.total_mines - sum(1 if t.marked else 0 for t in self.all_tiles)
 
-    def reveal_all(self, pos: Position):
+    def reveal_all(self, pos: Position, cascade=False):
         self.reveal(pos)
         for neighbor in self.in_range(pos):
             if neighbor.marked:
                 continue
-            self.reveal(neighbor.pos)
+            self.reveal(neighbor.pos, cascade=cascade)
 
     def mark(self, pos: Position):
         if self.status != GameState.IN_PROGRESS:
@@ -336,8 +337,6 @@ class MineField(Widget):
                             self._board.mark(tile.pos)
                 else:
                     self._board.mark(self._board.cursor)
-            elif event.key_code in (ord("b"), ord("B")):
-                self._board.recalc()
             else:
                 return event
         elif isinstance(event, MouseEvent):
