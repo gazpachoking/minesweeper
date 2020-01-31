@@ -155,7 +155,7 @@ class Board:
         """Determine any tiles that should no longer be variable."""
         solver = self.solver()
         # Lock in certain tiles that must/must not be mines.
-        for t in self.tiles(revealed=False):
+        for t in self.tiles(revealed=False, determined=False, boundary=True):
             can_be_mine = solver.check(t.var) == z3.sat
             can_be_open = solver.check(z3.Not(t.var)) == z3.sat
             if not (can_be_mine and can_be_open):
