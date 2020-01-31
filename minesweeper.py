@@ -81,11 +81,11 @@ class Board:
         self.adjacency_mode = mode
         self.status = GameState.NOT_STARTED
         self.place_tiles()
-        self.recalc()
+        self.replace_mines()
 
     def new(self):
         self.place_tiles()
-        self.recalc()
+        self.replace_mines()
 
     @property
     def num_determined_mines(self) -> int:
@@ -143,13 +143,17 @@ class Board:
             )
         return solver
 
-    def recalc(self):
+    def replace_mines(self):
         """Places all mines on tiles randomly, but in accordance with revealed hints."""
         solver = self.solver()
         assert solver.check() == z3.sat
         model = solver.model()
         for t in self.tiles(determined=False):
             t.mine = bool(model[t.var])
+
+    def recalc(self):
+        """Determine any tiles that should no longer be variable."""
+        solver = self.solver()
         # Lock in certain tiles that must/must not be mines.
         for t in self.tiles(revealed=False):
             can_be_mine = solver.check(t.var) == z3.sat
@@ -165,33 +169,39 @@ class Board:
             return
 
         changed = False
+        # First click, prevent hitting mine, start the timer
         if not any(self.tiles(determined=True)):
-            # First click
             self.start_time = time.time()
             changed = tile.mine
             tile.mine = False
-            tile.determined = True
+        # Tile can still be changed, figure out if we'll change it
+        elif not tile.determined and not cascade:
+            safe_moves = any(self.tiles(boundary=True, mine=False, determined=True, revealed=False))
+            boundary_moves = list(self.tiles(boundary=True, revealed=False))
+            if safe_moves:
+                changed = not tile.mine
+                tile.mine = True
+            # If there are no safe moves, guarantee next boundary move is safe.
+            # Or, if there are no boundary moves, guarantee any guess is safe.
+            elif not boundary_moves or tile in boundary_moves:
+                changed = tile.mine
+                tile.mine = False
+        tile.determined = True
 
-        if not tile.determined and not cascade:
-            if tile.mine:
-                solver = self.solver()
-                can_be_mine = solver.check(tile.var) == z3.sat
-                can_be_open = solver.check(z3.Not(tile.var)) == z3.sat
-                if can_be_open:
-                    changed = tile.mine
-                    tile.mine = False
+        # If we changed the state of a mine, recalculate all mines into valid positions
+        if changed:
+            self.replace_mines()
 
         if tile.mine:
             self.status = GameState.LOST
             self.end_time = time.time()
             return
-        tile.determined = True
-        if changed:
-            self.recalc()
+
         tile.num_adjacent_mines = sum(1 for n in tile.neighbors if n.mine)
         tile.revealed = True
         if not tile.num_adjacent_mines:
             self.reveal_all(tile.pos, cascade=True)
+        # Once all new tiles have been revealed, lock in any tiles which can no longer be changed
         if not cascade:
             self.recalc()
         if self.is_win():
