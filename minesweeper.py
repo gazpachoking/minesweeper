@@ -286,11 +286,12 @@ class MineField(Widget):
                     color = Screen.COLOUR_RED
                     char = "X" * CHAR_WIDTH
             else:
-                if not tile.revealed and tile.determined:
-                    if tile.mine:
-                        color = Screen.COLOUR_RED
-                    else:
-                        color = Screen.COLOUR_GREEN
+                # Debug (cheater) coloring
+                # if not tile.revealed and tile.determined:
+                #     if tile.mine:
+                #         color = Screen.COLOUR_RED
+                #     else:
+                #         color = Screen.COLOUR_GREEN
                 if tile is cursor:
                     bg = Screen.COLOUR_YELLOW
                 if cursor.revealed:
