@@ -302,7 +302,7 @@ class MineField(Widget):
                     if tile in adjacent and not tile.revealed:
                         bg = Screen.COLOUR_CYAN
             self._frame.canvas.paint(
-                char, self._x + (tile.pos.x * CHAR_WIDTH), self._y + tile.pos.y, color, bg=bg
+                char, self._x + (tile.pos.x * CHAR_WIDTH), self._y + tile.pos.y, color, bg=bg, attr=Screen.A_BOLD,
             )
 
     def reset(self):
