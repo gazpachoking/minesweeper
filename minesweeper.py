@@ -27,19 +27,31 @@ class GameState(Enum):
 
 
 # Adjacency Types
-STANDARD = "standard"
-KNIGHTS = "knights"
-ADJACENCY_TYPES = {
-    STANDARD: list(product([-1, 0, 1], [-1, 0, 1])),
-    KNIGHTS: list(chain(product([-1, 1], [-2, 2]), product([-2, 2], [-1, 1]))),
+class AdjacencyType(Enum):
+    STANDARD = "standard"
+    KNIGHTS = "knights"
+
+
+NEIGHBORS = {
+    AdjacencyType.STANDARD: list(product([-1, 0, 1], [-1, 0, 1])),
+    AdjacencyType.KNIGHTS: list(
+        chain(product([-1, 1], [-2, 2]), product([-2, 2], [-1, 1]))
+    ),
 }
+
+
+# Niceness
+class NiceMode(Enum):
+    NICE = "nice"
+    NORMAL = "normal"
+    CRUEL = "cruel"
 
 
 CHAR_WIDTH = 2
 
 
 class Tile:
-    def __init__(self, pos: Position, board : 'Board'):
+    def __init__(self, pos: Position, board: "Board"):
         self.pos = pos
         self.board = board
         self.determined = False
@@ -53,7 +65,7 @@ class Tile:
         return not self.determined
 
     @property
-    def neighbors(self) -> typing.Iterable['Tile']:
+    def neighbors(self) -> typing.Iterable["Tile"]:
         return self.board.in_range(self.pos)
 
     @property
@@ -69,7 +81,14 @@ class Tile:
 
 
 class Board:
-    def __init__(self, width: int, height: int, num_mines: int, mode: str = STANDARD):
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        num_mines: int,
+        adjacency: AdjacencyType = AdjacencyType.STANDARD,
+        niceness: NiceMode = NiceMode.CRUEL,
+    ):
         assert num_mines < width * height
         self.field = {}
         self.width = width
@@ -78,7 +97,8 @@ class Board:
         self.start_time = 0.0
         self.end_time = 0.0
         self.cursor = Position(0, 0)
-        self.adjacency_mode = mode
+        self.adjacency_mode = adjacency
+        self.nice_mode = niceness
         self.status = GameState.NOT_STARTED
         self.place_tiles()
         self.replace_mines()
@@ -99,7 +119,9 @@ class Board:
     def all_tiles(self) -> typing.Iterable[Tile]:
         return self.field.values()
 
-    def tiles(self, revealed=None, determined=None, boundary=None, mine=None) -> typing.Iterable[Tile]:
+    def tiles(
+        self, revealed=None, determined=None, boundary=None, mine=None
+    ) -> typing.Iterable[Tile]:
         for tile in self.all_tiles:
             if revealed is not None and tile.revealed != revealed:
                 continue
@@ -128,7 +150,9 @@ class Board:
         shuffle(revealed_boundary)
 
         # The sum of all undetermined tiles that are a mine must equal the number of unplaced mines
-        solver.add(z3.PbEq([(t.var, 1) for t in undetermined], self.num_undetermined_mines))
+        solver.add(
+            z3.PbEq([(t.var, 1) for t in undetermined], self.num_undetermined_mines)
+        )
 
         # The sum of all undetermined tiles touching a revealed number must equal that number
         for t in revealed_boundary:
@@ -175,15 +199,17 @@ class Board:
             changed = tile.mine
             tile.mine = False
         # Tile can still be changed, figure out if we'll change it
-        elif not tile.determined and not cascade:
-            safe_moves = any(self.tiles(boundary=True, mine=False, determined=True, revealed=False))
+        elif not tile.determined and not cascade and self.nice_mode != NiceMode.NORMAL:
+            safe_moves = any(
+                self.tiles(boundary=True, mine=False, determined=True, revealed=False)
+            )
             boundary_moves = list(self.tiles(boundary=True, revealed=False))
-            if safe_moves:
+            if safe_moves and self.nice_mode == NiceMode.CRUEL:
                 changed = not tile.mine
                 tile.mine = True
             # If there are no safe moves, guarantee next boundary move is safe.
             # Or, if there are no boundary moves, guarantee any guess is safe.
-            elif not boundary_moves or tile in boundary_moves:
+            elif NiceMode.NICE or not boundary_moves or tile in boundary_moves:
                 changed = tile.mine
                 tile.mine = False
         tile.determined = True
@@ -243,7 +269,7 @@ class Board:
         return any(t.mine and t.revealed for t in self.all_tiles)
 
     def in_range(self, pos: Position):
-        for offset in ADJACENCY_TYPES[self.adjacency_mode]:
+        for offset in NEIGHBORS[self.adjacency_mode]:
             new_pos = Position(*[sum(v) for v in zip(offset, pos)])
             if self.in_bounds(new_pos):
                 yield self[new_pos]
@@ -302,7 +328,12 @@ class MineField(Widget):
                     if tile in adjacent and not tile.revealed:
                         bg = Screen.COLOUR_CYAN
             self._frame.canvas.paint(
-                char, self._x + (tile.pos.x * CHAR_WIDTH), self._y + tile.pos.y, color, bg=bg, attr=Screen.A_BOLD,
+                char,
+                self._x + (tile.pos.x * CHAR_WIDTH),
+                self._y + tile.pos.y,
+                color,
+                bg=bg,
+                attr=Screen.A_BOLD,
             )
 
     def reset(self):
@@ -446,14 +477,38 @@ def run_scene(screen, board):
     screen.play(scenes, stop_on_resize=True)
 
 
+class EnumChoice(click.Choice):
+    """Allows enum to be used as a click choice."""
+
+    def __init__(self, enum, case_sensitive=False, use_value=True):
+        self.enum = enum
+        self.use_value = use_value
+        choices = [str(e.value) if use_value else e.name for e in self.enum]
+        super().__init__(choices, case_sensitive)
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, self.enum):
+            return value
+        result = super().convert(value, param, ctx)
+        # Find the original case in the enum
+        if not self.case_sensitive and result not in self.choices:
+            result = next(c for c in self.choices if result.lower() == c.lower())
+        if self.use_value:
+            return next(e for e in self.enum if str(e.value) == result)
+        return self.enum[result]
+
+
 @click.command()
 @click.option("--size", default=(30, 20), nargs=2, type=int)
 @click.option("--mines", default=0.2, type=float)
-@click.option("--mode", default=STANDARD, type=click.Choice(ADJACENCY_TYPES))
-def main(size, mines, mode):
+@click.option(
+    "--adjacency", default=AdjacencyType.STANDARD, type=EnumChoice(AdjacencyType)
+)
+@click.option("--niceness", default=NiceMode.CRUEL, type=EnumChoice(NiceMode))
+def main(size, mines, adjacency, niceness):
     if mines < 1:
         mines = int(size[0] * size[1] * mines)
-    board = Board(size[0], size[1], mines, mode)
+    board = Board(size[0], size[1], mines, adjacency, niceness)
     while True:
         try:
             Screen.wrapper(run_scene, arguments=[board], unicode_aware=True)
