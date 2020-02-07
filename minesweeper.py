@@ -42,8 +42,13 @@ NEIGHBORS = {
 
 # Niceness
 class NiceMode(Enum):
+    # Any click that could result in an empty tile is an empty tile.
     NICE = "nice"
+    # If guessing is the only move available, you will not guess wrong.
+    FAIR = "fair"
+    # Traditional minesweeper.
     NORMAL = "normal"
+    # Any click that could result in a mine is a mine. (Except when guessing is the only move available.)
     CRUEL = "cruel"
 
 
@@ -120,14 +125,14 @@ class Board:
         return self.field.values()
 
     def tiles(
-        self, revealed=None, determined=None, boundary=None, mine=None
+        self, revealed=None, determined=None, on_boundary=None, mine=None
     ) -> typing.Iterable[Tile]:
         for tile in self.all_tiles:
             if revealed is not None and tile.revealed != revealed:
                 continue
             if determined is not None and tile.determined != determined:
                 continue
-            if boundary is not None and tile.on_boundary != boundary:
+            if on_boundary is not None and tile.on_boundary != on_boundary:
                 continue
             if mine is not None and tile.mine != mine:
                 continue
@@ -145,7 +150,7 @@ class Board:
         solver = z3.Solver()
         # Cheat a bit to randomize possible solution by adding constraints in a random order
         undetermined = list(self.tiles(determined=False))
-        revealed_boundary = list(self.tiles(revealed=True, boundary=True))
+        revealed_boundary = list(self.tiles(revealed=True, on_boundary=True))
         shuffle(undetermined)
         shuffle(revealed_boundary)
 
@@ -179,7 +184,7 @@ class Board:
         """Determine any tiles that should no longer be variable."""
         solver = self.solver()
         # Lock in certain tiles that must/must not be mines.
-        for t in self.tiles(revealed=False, determined=False, boundary=True):
+        for t in self.tiles(revealed=False, determined=False, on_boundary=True):
             can_be_mine = solver.check(t.var) == z3.sat
             can_be_open = solver.check(z3.Not(t.var)) == z3.sat
             if not (can_be_mine and can_be_open):
@@ -201,9 +206,9 @@ class Board:
         # Tile can still be changed, figure out if we'll change it
         elif not tile.determined and not cascade and self.nice_mode != NiceMode.NORMAL:
             safe_moves = any(
-                self.tiles(boundary=True, mine=False, determined=True, revealed=False)
+                self.tiles(on_boundary=True, mine=False, determined=True, revealed=False)
             )
-            boundary_moves = list(self.tiles(boundary=True, revealed=False))
+            boundary_moves = list(self.tiles(on_boundary=True, revealed=False))
             if safe_moves and self.nice_mode == NiceMode.CRUEL:
                 changed = not tile.mine
                 tile.mine = True
@@ -487,7 +492,7 @@ class EnumChoice(click.Choice):
         super().__init__(choices, case_sensitive)
 
     def convert(self, value, param, ctx):
-        if isinstance(value, self.enum):
+        if value in self.enum:
             return value
         result = super().convert(value, param, ctx)
         # Find the original case in the enum
