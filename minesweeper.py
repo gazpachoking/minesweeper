@@ -52,7 +52,43 @@ class NiceMode(Enum):
     CRUEL = "cruel"
 
 
-CHAR_WIDTH = 2
+STYLES = {
+    "single": {
+        "width": 1,
+        "flag": "#",
+        "wrong_flag": "X",
+        "mine": "*",
+        "unrevealed": " ",
+        0: " ",
+        1: "1",
+        2: "2",
+        3: "3",
+        4: "4",
+        5: "5",
+        6: "6",
+        7: "7",
+        8: "8",
+        9: "9",
+    },
+    "double": {
+        "width": 2,
+        # All of these characters are 'full width'
+        "flag": "＃",
+        "wrong_flag": "Ｘ",
+        "mine": "＊",
+        "unrevealed": "　",
+        0: "　",
+        1: "１",
+        2: "２",
+        3: "３",
+        4: "４",
+        5: "５",
+        6: "６",
+        7: "７",
+        8: "８",
+        9: "９",
+    }
+}
 
 
 class Tile:
@@ -287,9 +323,10 @@ class Board:
 
 
 class MineField(Widget):
-    def __init__(self, board):
+    def __init__(self, board, style):
         super().__init__("MineField")
         self._board = board
+        self._style = style
 
     def update(self, frame_no):
         adjacent = list(self._board.in_range(self._board.cursor))
@@ -299,14 +336,12 @@ class MineField(Widget):
             bg = Screen.COLOUR_BLACK
             if tile.marked:
                 color = Screen.COLOUR_RED
-                char = "＃"
+                char = self._style["flag"]
             elif not tile.revealed:
                 bg = Screen.COLOUR_WHITE
-                char = "\u3000"  # Full width space
-            elif tile.num_adjacent_mines:
-                char = chr(ord(str(tile.num_adjacent_mines)) + 0xFEE0)
+                char = self._style["unrevealed"]
             else:
-                char = "\u3000"
+                char = self._style[tile.num_adjacent_mines]
             if self._board.status in [GameState.WON, GameState.LOST]:
                 if tile.marked and tile.mine:
                     color = Screen.COLOUR_GREEN
@@ -314,10 +349,10 @@ class MineField(Widget):
                     color = Screen.COLOUR_GREEN
                     if tile.revealed:
                         color = Screen.COLOUR_RED
-                    char = "＊"
+                    char = self._style["mine"]
                 elif tile.marked:
                     color = Screen.COLOUR_RED
-                    char = "Ｘ"
+                    char = self._style["wrong_flag"]
                 if tile.determined and not tile.mine and not tile.revealed:
                     bg = Screen.COLOUR_YELLOW
             else:
@@ -334,7 +369,7 @@ class MineField(Widget):
                         bg = Screen.COLOUR_CYAN
             self._frame.canvas.paint(
                 char,
-                self._x + (tile.pos.x * CHAR_WIDTH),
+                self._x + (tile.pos.x * self._style["width"]),
                 self._y + tile.pos.y,
                 color,
                 bg=bg,
@@ -396,7 +431,7 @@ class MineField(Widget):
             if self._board.status in [GameState.WON, GameState.LOST]:
                 return
             self.focus()
-            pos = Position(int(event.x / CHAR_WIDTH) - self._x, event.y - self._y)
+            pos = Position(int(event.x / self._style["width"]) - self._x, event.y - self._y)
             if not self._board.in_bounds(pos):
                 return
             self._board.cursor = pos
@@ -427,11 +462,12 @@ class MineField(Widget):
 
 
 class GameBoard(Frame):
-    def __init__(self, screen, board: Board):
+    def __init__(self, screen, board: Board, style):
+        self._style = style
         super().__init__(
             screen,
             board.height + 4,
-            (board.width * CHAR_WIDTH) + 2,
+            (board.width * self._style['width']) + 2,
             title="Minesweeper",
             hover_focus=False,
         )
@@ -442,7 +478,7 @@ class GameBoard(Frame):
         self._mine_label = Label(str(self._board.total_mines))
         layout1.add_widget(self._time_label, 0)
         layout1.add_widget(self._mine_label, 1)
-        self._mine_field = MineField(board)
+        self._mine_field = MineField(board, style)
         self._layout2 = Layout([100])
         self.add_layout(self._layout2)
         self._layout2.add_widget(self._mine_field)
@@ -477,8 +513,8 @@ class GameBoard(Frame):
         super()._update(frame_no)
 
 
-def run_scene(screen, board):
-    scenes = [Scene([GameBoard(screen, board)], -1, name="Main")]
+def run_scene(screen, board, style):
+    scenes = [Scene([GameBoard(screen, board, style)], -1, name="Main")]
     screen.play(scenes, stop_on_resize=True)
 
 
@@ -510,13 +546,17 @@ class EnumChoice(click.Choice):
     "--adjacency", default=AdjacencyType.STANDARD, type=EnumChoice(AdjacencyType)
 )
 @click.option("--niceness", default=NiceMode.CRUEL, type=EnumChoice(NiceMode))
-def main(size, mines, adjacency, niceness):
+@click.option("--style", default="double", type=click.Choice(STYLES.keys()))
+def main(size, mines, adjacency, niceness, style):
     if mines < 1:
         mines = int(size[0] * size[1] * mines)
+    else:
+        mines = int(mines)
+    style = STYLES[style]
     board = Board(size[0], size[1], mines, adjacency, niceness)
     while True:
         try:
-            Screen.wrapper(run_scene, arguments=[board], unicode_aware=True)
+            Screen.wrapper(run_scene, arguments=[board, style], unicode_aware=True)
             sys.exit(0)
         except ResizeScreenError as e:
             pass
