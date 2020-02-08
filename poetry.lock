@@ -78,12 +78,12 @@ version = "0.1.8"
 category = "main"
 description = "an efficient SMT solver library"
 name = "z3-solver"
-optional = true
+optional = false
 python-versions = "*"
 version = "4.8.7.0"
 
 [metadata]
-content-hash = "b41c3fd7c19238f0145534369574b3d8bd00bfd1e68fc77b334b0bc6e9fcde50"
+content-hash = "4c8c95255c14cc16b6bc970de4ce9df5db371b6f556426ac76727cb2b552d029"
 python-versions = "^3.6"
 
 [metadata.files]

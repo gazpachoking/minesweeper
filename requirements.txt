@@ -6,3 +6,4 @@ pyfiglet==0.8.post1
 pypiwin32==223; sys_platform == "win32"
 pywin32==227; sys_platform == "win32"
 wcwidth==0.1.8
+z3-solver==4.8.7.0
