@@ -1,4 +1,5 @@
 from collections import namedtuple
+from enum import Enum
 from itertools import chain, product
 from random import shuffle
 import sys
@@ -11,102 +12,268 @@ from asciimatics.scene import Scene
 from asciimatics.screen import Screen
 from asciimatics.widgets import Frame, Label, Layout, Button, Widget
 import click
+import z3
 
 
 Position = namedtuple("Position", ["x", "y"])
 
+
 # Game Statuses
-NOT_STARTED = "Not Started"
-IN_PROGRESS = "In Progress"
-WON = "Won!"
-LOST = "Lost!"
+class GameState(Enum):
+    NOT_STARTED = "Not Started"
+    IN_PROGRESS = "In Progress"
+    WON = "Won!"
+    LOST = "Lost!"
+
 
 # Adjacency Types
-STANDARD = "standard"
-KNIGHTS = "knights"
-ADJACENCY_TYPES = {
-    STANDARD: list(product([-1, 0, 1], [-1, 0, 1])),
-    KNIGHTS: list(chain(product([-1, 1], [-2, 2]), product([-2, 2], [-1, 1]))),
+class AdjacencyType(Enum):
+    STANDARD = "standard"
+    KNIGHTS = "knights"
+
+
+NEIGHBORS = {
+    AdjacencyType.STANDARD: list(product([-1, 0, 1], [-1, 0, 1])),
+    AdjacencyType.KNIGHTS: list(
+        chain(product([-1, 1], [-2, 2]), product([-2, 2], [-1, 1]))
+    ),
 }
 
 
-class Tile(object):
-    def __init__(self, mine=False):
-        self.mine = mine
+# Niceness
+class NiceMode(Enum):
+    # Any click that could result in an empty tile is an empty tile.
+    NICE = "nice"
+    # If guessing is the only move available, you will not guess wrong.
+    FAIR = "fair"
+    # Traditional minesweeper.
+    NORMAL = "normal"
+    # Any click that could result in a mine is a mine. (Except when guessing is the only move available.)
+    CRUEL = "cruel"
+
+
+STYLES = {
+    "single": {
+        "width": 1,
+        "flag": "#",
+        "wrong_flag": "X",
+        "mine": "*",
+        "unrevealed": " ",
+        0: " ",
+        1: "1",
+        2: "2",
+        3: "3",
+        4: "4",
+        5: "5",
+        6: "6",
+        7: "7",
+        8: "8",
+        9: "9",
+    },
+    "double": {
+        "width": 2,
+        # All of these characters are 'full width'
+        "flag": "＃",
+        "wrong_flag": "Ｘ",
+        "mine": "＊",
+        "unrevealed": "　",
+        0: "　",
+        1: "１",
+        2: "２",
+        3: "３",
+        4: "４",
+        5: "５",
+        6: "６",
+        7: "７",
+        8: "８",
+        9: "９",
+    }
+}
+
+
+class Tile:
+    def __init__(self, pos: Position, board: "Board"):
+        self.pos = pos
+        self.board = board
+        self.determined = False
+        self.mine = False
         self.revealed = False
         self.marked = False
-        self.neighbors = None
-        self.pos = None
+        self.num_adjacent_mines = None
+
+    @property
+    def undetermined(self) -> bool:
+        return not self.determined
+
+    @property
+    def neighbors(self) -> typing.Iterable["Tile"]:
+        return self.board.in_range(self.pos)
+
+    @property
+    def on_boundary(self) -> bool:
+        return any(n.revealed != self.revealed for n in self.neighbors)
+
+    @property
+    def var(self):
+        return z3.Bool(f"t{self.pos.x},{self.pos.y}")
 
     def __repr__(self):
-        return f"Tile(mine={self.mine})"
+        return f"Tile(pos={self.pos})"
 
 
-class Board(object):
-    def __init__(self, width: int, height: int, num_mines: int, mode: str = STANDARD):
-        self.field = []
+class Board:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        num_mines: int,
+        adjacency: AdjacencyType = AdjacencyType.STANDARD,
+        niceness: NiceMode = NiceMode.CRUEL,
+    ):
+        assert num_mines < width * height
+        self.field = {}
         self.width = width
         self.height = height
-        self.num_mines = num_mines
+        self.total_mines = num_mines
         self.start_time = 0.0
         self.end_time = 0.0
         self.cursor = Position(0, 0)
-        self.adjacency_mode = mode
-        self.status = NOT_STARTED
-        self.new(width, height, num_mines)
+        self.adjacency_mode = adjacency
+        self.nice_mode = niceness
+        self.status = GameState.NOT_STARTED
+        self.place_tiles()
+        self.replace_mines()
 
-    def new(self, width: int = None, height: int = None, num_mines: int = None):
-        if width is not None:
-            self.width = width
-        if height is not None:
-            self.height = height
-        if num_mines is not None:
-            self.num_mines = num_mines
-        self.place_mines(Position(0, 0))
-        self.status = NOT_STARTED
-        self.start_time = None
-        self.end_time = None
+    def new(self):
+        self.place_tiles()
+        self.replace_mines()
 
-    def place_mines(self, start_pos: Position):
-        assert self.num_mines < self.width * self.height
+    @property
+    def num_determined_mines(self) -> int:
+        return sum(1 for t in self.tiles(determined=True, mine=True))
+
+    @property
+    def num_undetermined_mines(self) -> int:
+        return self.total_mines - self.num_determined_mines
+
+    @property
+    def all_tiles(self) -> typing.Iterable[Tile]:
+        return self.field.values()
+
+    def tiles(
+        self, revealed=None, determined=None, on_boundary=None, mine=None
+    ) -> typing.Iterable[Tile]:
+        for tile in self.all_tiles:
+            if revealed is not None and tile.revealed != revealed:
+                continue
+            if determined is not None and tile.determined != determined:
+                continue
+            if on_boundary is not None and tile.on_boundary != on_boundary:
+                continue
+            if mine is not None and tile.mine != mine:
+                continue
+            yield tile
+
+    def place_tiles(self):
         self.field.clear()
-        tiles = [
-            Tile(mine=x < self.num_mines) for x in range(self.width * self.height - 1)
-        ]
-        shuffle(tiles)
-        tiles = iter(tiles)
         for row_num in range(self.height):
-            row = []
-            self.field.append(row)
             for col_num in range(self.width):
                 pos = Position(col_num, row_num)
-                if pos == start_pos:
-                    tile = Tile(mine=False)
-                else:
-                    tile = next(tiles)
-                tile.pos = pos
-                row.append(tile)
-        # Initialize number of neighbors
-        for tile in self.all_tiles():
-            a = list(self.in_range(tile.pos))
-            tile.neighbors = sum(1 if t.mine else 0 for t in self.in_range(tile.pos))
-        self.status = IN_PROGRESS
-        self.start_time = time.time()
+                self.field[pos] = Tile(pos=pos, board=self)
+        self.status = GameState.IN_PROGRESS
 
-    def reveal(self, pos: Position):
-        if self.status == NOT_STARTED:
-            self.place_mines(pos)
+    def solver(self):
+        solver = z3.Solver()
+        # Cheat a bit to randomize possible solution by adding constraints in a random order
+        undetermined = list(self.tiles(determined=False))
+        revealed_boundary = list(self.tiles(revealed=True, on_boundary=True))
+        shuffle(undetermined)
+        shuffle(revealed_boundary)
+
+        # The sum of all undetermined tiles that are a mine must equal the number of unplaced mines
+        solver.add(
+            z3.PbEq([(t.var, 1) for t in undetermined], self.num_undetermined_mines)
+        )
+
+        # The sum of all undetermined tiles touching a revealed number must equal that number
+        for t in revealed_boundary:
+            known_mine_neighbors = sum(
+                1 for n in t.neighbors if n.determined and n.mine
+            )
+            solver.add(
+                z3.PbEq(
+                    [(n.var, 1) for n in t.neighbors if n.undetermined],
+                    t.num_adjacent_mines - known_mine_neighbors,
+                )
+            )
+        return solver
+
+    def replace_mines(self):
+        """Places all mines on tiles randomly, but in accordance with revealed hints."""
+        solver = self.solver()
+        assert solver.check() == z3.sat
+        model = solver.model()
+        for t in self.tiles(determined=False):
+            t.mine = bool(model[t.var])
+
+    def recalc(self):
+        """Determine any tiles that should no longer be variable."""
+        solver = self.solver()
+        # Lock in certain tiles that must/must not be mines.
+        for t in self.tiles(revealed=False, determined=False, on_boundary=True):
+            can_be_mine = solver.check(t.var) == z3.sat
+            can_be_open = solver.check(z3.Not(t.var)) == z3.sat
+            if not (can_be_mine and can_be_open):
+                t.determined = True
+
+    def reveal(self, pos: Position, cascade=False):
+        if self.status != GameState.IN_PROGRESS:
+            return
         tile = self[pos]
         if tile.marked or tile.revealed:
             return
+
+        changed = False
+        # First click, prevent hitting mine, start the timer
+        if not any(self.tiles(determined=True)):
+            self.start_time = time.time()
+            changed = tile.mine
+            tile.mine = False
+        # Tile can still be changed, figure out if we'll change it
+        elif not tile.determined and not cascade and self.nice_mode != NiceMode.NORMAL:
+            safe_moves = any(
+                self.tiles(on_boundary=True, mine=False, determined=True, revealed=False)
+            )
+            boundary_moves = list(self.tiles(on_boundary=True, revealed=False))
+            if safe_moves and self.nice_mode == NiceMode.CRUEL:
+                changed = not tile.mine
+                tile.mine = True
+            # If there are no safe moves, guarantee next boundary move is safe.
+            # Or, if there are no boundary moves, guarantee any guess is safe.
+            elif NiceMode.NICE or not boundary_moves or tile in boundary_moves:
+                changed = tile.mine
+                tile.mine = False
+        tile.determined = True
+
+        # If we changed the state of a mine, recalculate all mines into valid positions
+        if changed:
+            self.replace_mines()
+
         tile.revealed = True
-        if not tile.neighbors:
-            self.reveal_all(tile.pos)
-        if self.is_lose():
-            self.status = LOST
+
+        if tile.mine:
+            self.status = GameState.LOST
             self.end_time = time.time()
-        elif self.is_win():
-            self.status = WON
+            return
+
+        tile.num_adjacent_mines = sum(1 for n in tile.neighbors if n.mine)
+        if not tile.num_adjacent_mines:
+            self.reveal_all(tile.pos, cascade=True)
+        # Once all new tiles have been revealed, lock in any tiles which can no longer be changed
+        if not cascade:
+            self.recalc()
+        if self.is_win():
+            self.status = GameState.WON
             self.end_time = time.time()
 
     @property
@@ -118,18 +285,18 @@ class Board(object):
         return time.time() - self.start_time
 
     @property
-    def mines_left(self) -> int:
-        return self.num_mines - sum(1 if t.marked else 0 for t in self.all_tiles())
+    def unmarked_mines(self) -> int:
+        return self.total_mines - sum(1 if t.marked else 0 for t in self.all_tiles)
 
-    def reveal_all(self, pos: Position):
+    def reveal_all(self, pos: Position, cascade=False):
         self.reveal(pos)
         for neighbor in self.in_range(pos):
             if neighbor.marked:
                 continue
-            self.reveal(neighbor.pos)
+            self.reveal(neighbor.pos, cascade=cascade)
 
     def mark(self, pos: Position):
-        if self.status == NOT_STARTED:
+        if self.status != GameState.IN_PROGRESS:
             return
         tile = self[pos]
         if tile.revealed:
@@ -137,66 +304,76 @@ class Board(object):
         tile.marked = not tile.marked
 
     def is_win(self) -> bool:
-        return all(t.mine or t.revealed for t in self.all_tiles())
+        return all(t.mine or t.revealed for t in self.all_tiles)
 
-    def is_lose(self) -> bool:
-        return any(t.mine and t.revealed for t in self.all_tiles())
-
-    def all_tiles(self) -> typing.Iterable[Tile]:
-        return chain(*self.field)
+    def is_loss(self) -> bool:
+        return any(t.mine and t.revealed for t in self.all_tiles)
 
     def in_range(self, pos: Position):
-        for offset in ADJACENCY_TYPES[self.adjacency_mode]:
+        for offset in NEIGHBORS[self.adjacency_mode]:
             new_pos = Position(*[sum(v) for v in zip(offset, pos)])
             if self.in_bounds(new_pos):
                 yield self[new_pos]
 
     def in_bounds(self, pos: Position):
-        return (0 <= pos[0] < self.width) and (0 <= pos[1] < self.height)
+        return pos in self.field
 
     def __getitem__(self, pos: Position) -> Tile:
-        return self.field[pos[1]][pos[0]]
+        return self.field[pos]
 
 
 class MineField(Widget):
-    def __init__(self, board):
+    def __init__(self, board, style):
         super().__init__("MineField")
         self._board = board
+        self._style = style
 
     def update(self, frame_no):
         adjacent = list(self._board.in_range(self._board.cursor))
         cursor = self._board[self._board.cursor]
-        for tile in self._board.all_tiles():
+        for tile in self._board.all_tiles:
             color = Screen.COLOUR_WHITE
             bg = Screen.COLOUR_BLACK
             if tile.marked:
                 color = Screen.COLOUR_RED
-                char = "#"
+                char = self._style["flag"]
             elif not tile.revealed:
-                char = "░"
-            elif tile.neighbors:
-                char = str(tile.neighbors)
+                bg = Screen.COLOUR_WHITE
+                char = self._style["unrevealed"]
             else:
-                char = " "
-            if self._board.status in [WON, LOST]:
+                char = self._style[tile.num_adjacent_mines]
+            if self._board.status in [GameState.WON, GameState.LOST]:
                 if tile.marked and tile.mine:
                     color = Screen.COLOUR_GREEN
                 elif tile.mine:
                     color = Screen.COLOUR_GREEN
                     if tile.revealed:
                         color = Screen.COLOUR_RED
-                    char = "*"
+                    char = self._style["mine"]
                 elif tile.marked:
                     color = Screen.COLOUR_RED
-                    char = "X"
+                    char = self._style["wrong_flag"]
+                if tile.determined and not tile.mine and not tile.revealed:
+                    bg = Screen.COLOUR_YELLOW
             else:
+                # Debug (cheater) coloring
+                # if not tile.revealed and tile.determined:
+                #     if tile.mine:
+                #         color = Screen.COLOUR_RED
+                #     else:
+                #         color = Screen.COLOUR_GREEN
                 if tile is cursor:
                     bg = Screen.COLOUR_YELLOW
                 if cursor.revealed:
                     if tile in adjacent and not tile.revealed:
                         bg = Screen.COLOUR_CYAN
             self._frame.canvas.paint(
-                char, self._x + tile.pos.x, self._y + tile.pos.y, color, bg=bg
+                char,
+                self._x + (tile.pos.x * self._style["width"]),
+                self._y + tile.pos.y,
+                color,
+                bg=bg,
+                attr=Screen.A_BOLD,
             )
 
     def reset(self):
@@ -251,10 +428,12 @@ class MineField(Widget):
         elif isinstance(event, MouseEvent):
             if not self.is_mouse_over(event, include_label=False):
                 return event
-            if self._board.status in [WON, LOST]:
+            if self._board.status in [GameState.WON, GameState.LOST]:
                 return
             self.focus()
-            pos = Position(event.x - self._x, event.y - self._y)
+            pos = Position(int(event.x / self._style["width"]) - self._x, event.y - self._y)
+            if not self._board.in_bounds(pos):
+                return
             self._board.cursor = pos
             if event.buttons & event.LEFT_CLICK:
                 self._board.reveal(pos)
@@ -283,11 +462,12 @@ class MineField(Widget):
 
 
 class GameBoard(Frame):
-    def __init__(self, screen, board):
+    def __init__(self, screen, board: Board, style):
+        self._style = style
         super().__init__(
             screen,
             board.height + 4,
-            board.width + 2,
+            (board.width * self._style['width']) + 2,
             title="Minesweeper",
             hover_focus=False,
         )
@@ -295,10 +475,10 @@ class GameBoard(Frame):
         layout1 = Layout([1, 1])
         self.add_layout(layout1)
         self._time_label = Label("0")
-        self._mine_label = Label(str(self._board.num_mines))
+        self._mine_label = Label(str(self._board.total_mines))
         layout1.add_widget(self._time_label, 0)
         layout1.add_widget(self._mine_label, 1)
-        self._mine_field = MineField(board)
+        self._mine_field = MineField(board, style)
         self._layout2 = Layout([100])
         self.add_layout(self._layout2)
         self._layout2.add_widget(self._mine_field)
@@ -329,26 +509,54 @@ class GameBoard(Frame):
 
     def _update(self, frame_no):
         self._time_label.text = str(round(self._board.play_duration))
-        self._mine_label.text = str(self._board.mines_left)
+        self._mine_label.text = str(self._board.unmarked_mines)
         super()._update(frame_no)
 
 
-def run_scene(screen, board):
-    scenes = [Scene([GameBoard(screen, board)], -1, name="Main")]
+def run_scene(screen, board, style):
+    scenes = [Scene([GameBoard(screen, board, style)], -1, name="Main")]
     screen.play(scenes, stop_on_resize=True)
+
+
+class EnumChoice(click.Choice):
+    """Allows enum to be used as a click choice."""
+
+    def __init__(self, enum, case_sensitive=False, use_value=True):
+        self.enum = enum
+        self.use_value = use_value
+        choices = [str(e.value) if use_value else e.name for e in self.enum]
+        super().__init__(choices, case_sensitive)
+
+    def convert(self, value, param, ctx):
+        if value in self.enum:
+            return value
+        result = super().convert(value, param, ctx)
+        # Find the original case in the enum
+        if not self.case_sensitive and result not in self.choices:
+            result = next(c for c in self.choices if result.lower() == c.lower())
+        if self.use_value:
+            return next(e for e in self.enum if str(e.value) == result)
+        return self.enum[result]
 
 
 @click.command()
 @click.option("--size", default=(30, 20), nargs=2, type=int)
 @click.option("--mines", default=0.2, type=float)
-@click.option("--mode", default=STANDARD, type=click.Choice(ADJACENCY_TYPES))
-def main(size, mines, mode):
+@click.option(
+    "--adjacency", default=AdjacencyType.STANDARD, type=EnumChoice(AdjacencyType)
+)
+@click.option("--niceness", default=NiceMode.CRUEL, type=EnumChoice(NiceMode))
+@click.option("--style", default="double", type=click.Choice(STYLES.keys()))
+def main(size, mines, adjacency, niceness, style):
     if mines < 1:
         mines = int(size[0] * size[1] * mines)
-    board = Board(size[0], size[1], mines, mode)
+    else:
+        mines = int(mines)
+    style = STYLES[style]
+    board = Board(size[0], size[1], mines, adjacency, niceness)
     while True:
         try:
-            Screen.wrapper(run_scene, arguments=[board])
+            Screen.wrapper(run_scene, arguments=[board, style], unicode_aware=True)
             sys.exit(0)
         except ResizeScreenError as e:
             pass
