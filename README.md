@@ -44,7 +44,13 @@ CLI
 
 - **--size X Y** Specify field size
 - **--mines N** Specify number (or fraction of board) of mines
-
+- **--niceness cruel|normal|fair|nice**
+  - **nice** Any click that could result in an empty tile is an empty tile.
+  - **fair** If guessing is the only move available, you will not guess wrong.
+  - **normal** Traditional minesweeper.
+  - **cruel** Any click that could result in a mine is a mine. (Except when guessing is the only move available.)
+- **--style single|double** double mode uses full width unicode characters to
+  double the cell size. Use single if this causes problems with your terminal. 
 
   
 
