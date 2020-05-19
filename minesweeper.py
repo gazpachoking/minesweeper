@@ -347,6 +347,8 @@ class MineField(Widget):
             else:
                 char = self._style[tile.num_adjacent_mines]
             if self._board.status in [GameState.WON, GameState.LOST]:
+                if self._board.status == GameState.WON:
+                    bg = Screen.COLOUR_CYAN
                 if tile.mine:
                     color = Screen.COLOUR_GREEN
                     if tile.revealed:
