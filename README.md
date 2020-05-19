@@ -3,7 +3,7 @@ Minesweeper
 
 Simple terminal based minesweeper. Python 3 required.
 
-![minesweeper](https://gazpachoking.github.io/minesweeper/double.width.characters.png)
+![minesweeper](https://gazpachoking.github.io/minesweeper/minesweeper.emoji.png)
 
 Features
 --------
