@@ -58,6 +58,7 @@ STYLES = {
         "flag": "#",
         "wrong_flag": "X",
         "mine": "*",
+        "exploded": "+",
         "unrevealed": " ",
         0: " ",
         1: "1",
@@ -73,9 +74,10 @@ STYLES = {
     "double": {
         "width": 2,
         # All of these characters are 'full width'
-        "flag": "＃",
+        "flag": "🚩",
         "wrong_flag": "Ｘ",
-        "mine": "＊",
+        "mine": "💣",
+        "exploded": "💥",
         "unrevealed": "　",
         0: "　",
         1: "１",
@@ -340,16 +342,16 @@ class MineField(Widget):
             elif not tile.revealed:
                 bg = Screen.COLOUR_WHITE
                 char = self._style["unrevealed"]
+            elif tile.mine:
+                char = self._style["mine"]
             else:
                 char = self._style[tile.num_adjacent_mines]
             if self._board.status in [GameState.WON, GameState.LOST]:
-                if tile.marked and tile.mine:
-                    color = Screen.COLOUR_GREEN
-                elif tile.mine:
+                if tile.mine:
                     color = Screen.COLOUR_GREEN
                     if tile.revealed:
                         color = Screen.COLOUR_RED
-                    char = self._style["mine"]
+                        char = self._style["exploded"]
                 elif tile.marked:
                     color = Screen.COLOUR_RED
                     char = self._style["wrong_flag"]
@@ -528,7 +530,7 @@ class EnumChoice(click.Choice):
         super().__init__(choices, case_sensitive)
 
     def convert(self, value, param, ctx):
-        if value in self.enum:
+        if isinstance(value, self.enum) and value in self.enum:
             return value
         result = super().convert(value, param, ctx)
         # Find the original case in the enum
