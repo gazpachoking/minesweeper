@@ -351,6 +351,8 @@ class MineField(Widget):
                     bg = Screen.COLOUR_CYAN
                 if tile.mine:
                     color = Screen.COLOUR_GREEN
+                    if not tile.marked:
+                        char = self._style["mine"]
                     if tile.revealed:
                         color = Screen.COLOUR_RED
                         char = self._style["exploded"]
