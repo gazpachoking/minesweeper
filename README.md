@@ -20,6 +20,7 @@ Features
   - Highlight adjacent tiles
   - Clear all adjacent
   - Mark all adjacent
+  - Shows spaces that were provably empty after a loss (marked with yellow)
 
 Controls
 --------
