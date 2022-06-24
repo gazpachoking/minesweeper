@@ -1,7 +1,7 @@
 asciimatics==1.11.0
 click==7.0
 future==0.18.2
-pillow==7.0.0
+pillow==9.0.1
 pyfiglet==0.8.post1
 pypiwin32==223; sys_platform == "win32"
 pywin32==227; sys_platform == "win32"
