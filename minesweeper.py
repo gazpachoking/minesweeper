@@ -120,7 +120,7 @@ class Tile:
         return z3.Bool(f"t{self.pos.x},{self.pos.y}")
 
     def __repr__(self):
-        return f"Tile(pos={self.pos})"
+        return f"Tile(pos={self.pos}, determined={self.determined}, mine={self.mine}, revealed={self.revealed})"
 
 
 class Board:
@@ -202,6 +202,8 @@ class Board:
             known_mine_neighbors = sum(
                 1 for n in t.neighbors if n.determined and n.mine
             )
+            if all(n.determined for n in t.neighbors):
+                continue
             solver.add(
                 z3.PbEq(
                     [(n.var, 1) for n in t.neighbors if n.undetermined],
