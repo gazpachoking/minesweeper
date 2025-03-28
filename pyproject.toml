@@ -1,18 +1,23 @@
-[tool.poetry]
+[project]
 name = "minesweeper"
 version = "0.1.0"
 description = "Cross-platform terminal based minesweeper."
-authors = ["Chase Sterling <chase.sterling@gmail.com>"]
-license = "MIT"
+authors = [
+    { name = "Chase Sterling", email = "chase.sterling@gmail.com" }
+]
+license = { text = "MIT" }
+dependencies = [
+    "asciimatics~=1.11.0",
+    "click~=7.0",
+    "setuptools>=78.1.0",
+    "z3-solver~=4.8.7",
+]
+requires-python = ">=3.10"
 
-[tool.poetry.dependencies]
-python = "^3.6"
-asciimatics = "^1.11.0"
-click = "^7.0"
-z3-solver = "^4.8.7"
-
-[tool.poetry.dev-dependencies]
+[project.scripts]
+minesweeper = "minesweeper:main"
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
