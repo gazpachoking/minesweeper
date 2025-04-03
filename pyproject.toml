@@ -1,21 +1,29 @@
 [project]
-name = "minesweeper"
-version = "0.1.0"
-description = "Cross-platform terminal based minesweeper."
+name = "undetermined"
+version = "0.2.0"
+description = "Cross-platform terminal or web based minesweeper."
 authors = [
     { name = "Chase Sterling", email = "chase.sterling@gmail.com" }
 ]
 license = { text = "MIT" }
 dependencies = [
     "asciimatics~=1.11.0",
-    "click~=7.0",
+    "click>=7.0",
+    "datastar-py>=0.4.3",
+    "fastapi>=0.115.12",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    "jinja2-fragments>=1.8.0",
+    "nats-py>=2.10.0",
+    "python-multipart>=0.0.20",
     "setuptools>=78.1.0",
-    "z3-solver~=4.8.7",
+    "uvicorn>=0.34.0",
+    "z3-solver>=4.8.7",
 ]
 requires-python = ">=3.10"
 
 [project.scripts]
-minesweeper = "minesweeper:main"
+minesweeper = "undetermined.terminal_client:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
