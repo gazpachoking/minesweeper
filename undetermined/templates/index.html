@@ -78,10 +78,8 @@
         .tile.adjacent-8 { color: gray; }
         </style>
     </head>
-    <body>
-        <main id="main"
-              class="content"
-              data-on-load="@get('/{{ room_name }}/stream')">
+    <body data-on-load="@get('/room/{{ room_name }}/stream')">
+        <main id="main" class="content">
             {% block main %}
                 <h1 id="title">
                     🚩 Undeter<span style="color: orangered">mined</span> 💣
@@ -97,11 +95,11 @@
                 <div class="board"
                      id="board"
                      style="grid-template-columns: repeat({{ board.width }}, 30px)"
-                     data-on-mouseleave="@get('/{{ room_name }}/mouseover?x=-1&y=-1')"
-                     data-on-click="@get('/{{ room_name }}/reveal?'+evt.target.dataset.xPos)"
-                     data-on-dblclick="@get('/{{ room_name }}/reveal_all?'+evt.target.dataset.xPos)"
-                     data-on-contextmenu__prevent="@get('/{{ room_name }}/mark?'+evt.target.dataset.xPos)"
-                     data-on-mouseover="@get('/{{ room_name }}/mouseover?'+evt.target.dataset.xPos)">
+                     data-on-mouseleave="@get('/room/{{ room_name }}/mouseover?x=-1&y=-1')"
+                     data-on-click="@get('/room/{{ room_name }}/reveal?'+evt.target.dataset.xPos)"
+                     data-on-dblclick="@get('/room/{{ room_name }}/reveal_all?'+evt.target.dataset.xPos)"
+                     data-on-contextmenu__prevent="@get('/room/{{ room_name }}/mark?'+evt.target.dataset.xPos)"
+                     data-on-mouseover="@get('/room/{{ room_name }}/mouseover?'+evt.target.dataset.xPos)">
                     {% for tile in board.all_tiles %}
                         <div class="tile {{ " ".join(tile.classes) }} {{ 'hover' if hover and hover.pos == tile.pos else '' }}"
                              data-x-pos="x={{ tile.pos.x }}&y={{ tile.pos.y }}">
@@ -119,7 +117,7 @@
                 </div>
                 <button id="newgame"
                         data-show="{{ board.is_over() |tojson }}"
-                        data-on-click="@post('/{{ room_name }}/new', {contentType: 'form', selector: '#gameoptions'})">
+                        data-on-click="@post('/room/{{ room_name }}/new', {contentType: 'form', selector: '#gameoptions'})">
                     New Game
                 </button>
             {% endblock %}

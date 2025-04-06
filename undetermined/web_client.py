@@ -16,7 +16,7 @@ import uvicorn
 from jinja2_fragments import render_block
 from nats.js.errors import KeyNotFoundError
 from nats.js.kv import KeyValue
-from pydantic import BaseModel
+from pydantic import BaseModel, Json
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import StreamingResponse
@@ -56,6 +56,7 @@ async def get_board(room_name: str):
         entry = await kv.get(f"{room_name}.state")
     except KeyNotFoundError:
         board = Board(10, 10, 10)
+        # Using pickle is super inefficient, but :shrug:
         await kv.put(f"{room_name}.state", pickle.dumps(board))
     else:
         board = pickle.loads(entry.value)
@@ -84,7 +85,7 @@ class SSE(StreamingResponse):
         super().__init__(*args, **kwargs)
 
 
-@app.get("/{room_name}", response_class=HTMLResponse)
+@app.get("/room/{room_name}", response_class=HTMLResponse)
 async def root(request: Request, room_name: str, board: BoardDep):
     return templates.TemplateResponse(
         request, "index.html", {"board": board, "room_name": room_name}
@@ -96,7 +97,7 @@ class HoverPos(BaseModel):
     session: str
 
 
-@app.get("/{room_name}/stream")
+@app.get("/room/{room_name}/stream")
 async def stream(request: Request, room_name: str, session_id: SessionDep):
 
     async def gen():
@@ -145,7 +146,7 @@ class RoomOptions(BaseModel):
     adjacency_mode: AdjacencyType
 
 
-@app.post("/{room_name}/new")
+@app.post("/room/{room_name}/new")
 async def new(
     request: Request, room_name: str, options: Annotated[RoomOptions, Form()]
 ):
@@ -160,13 +161,13 @@ async def new(
     return Response(status_code=204)
 
 
-@app.get("/{room_name}/reveal")
+@app.get("/room/{room_name}/reveal")
 async def on_click(pos: PositionDep, board: BoardDep):
     board.reveal(pos)
     return Response(status_code=204)
 
 
-@app.get("/{room_name}/mark")
+@app.get("/room/{room_name}/mark")
 async def on_mark(pos: PositionDep, board: BoardDep):
     if board[pos].revealed:
         board.mark_all(pos)
@@ -176,13 +177,13 @@ async def on_mark(pos: PositionDep, board: BoardDep):
     return Response(status_code=204)
 
 
-@app.get("/{room_name}/reveal_all")
+@app.get("/room/{room_name}/reveal_all")
 async def on_dbl(pos: PositionDep, board: BoardDep):
     board.reveal_all(pos)
     return Response(status_code=204)
 
 
-@app.get("/{room_name}/mouseover")
+@app.get("/room/{room_name}/mouseover")
 async def on_mouseover(
     room_name: str, pos: PositionDep, session_id: SessionDep
 ):
