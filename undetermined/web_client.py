@@ -5,6 +5,7 @@ from typing import Annotated
 
 import nats
 import nats.errors
+import nats.js.errors
 from nats.js.api import KeyValueConfig
 from datastar_py import ServerSentEventGenerator, SSE_HEADERS
 
@@ -32,7 +33,12 @@ async def lifespan(app: FastAPI):
     nc = await nats.connect("nats://127.0.0.1:4222")
     js = nc.jetstream()
     global kv
-    kv = await js.create_key_value(KeyValueConfig("undetermined"))
+    try:
+        kv = await js.create_key_value(KeyValueConfig("undetermined", history=2))
+    except nats.js.errors.BadRequestError:
+        # If we changed the config just delete and recreate the bucket
+        await js.delete_key_value("undetermined")
+        kv = await js.create_key_value(KeyValueConfig("undetermined", history=3))
     yield
     await nc.close()
 
@@ -180,6 +186,14 @@ async def on_mark(pos: PositionDep, board: BoardDep):
 @app.get("/room/{room_name}/reveal_all")
 async def on_dbl(pos: PositionDep, board: BoardDep):
     board.reveal_all(pos)
+    return Response(status_code=204)
+
+
+@app.post("/room/{room_name}/undo")
+async def undo(room_name: str):
+    hist = await kv.history(f"{room_name}.state")
+    if len(hist) >= 2:
+        await kv.put(f"{room_name}.state", hist[-2].value)
     return Response(status_code=204)
 
 

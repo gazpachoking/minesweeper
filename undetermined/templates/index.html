@@ -16,13 +16,13 @@
 
         #title {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1em;
         }
 
         #board {
             display: grid;
             justify-content: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5em;
         }
 
         #game-info {
@@ -76,6 +76,11 @@
         .tile.adjacent-6 { color: turquoise; }
         .tile.adjacent-7 { color: black; }
         .tile.adjacent-8 { color: gray; }
+
+        #gameover-buttons {
+            display: flex;
+            gap: 1em;
+        }
         </style>
     </head>
     <body data-on-load="@get('/room/{{ room_name }}/stream')">
@@ -115,11 +120,18 @@
                         </div>
                     {% endfor %}
                 </div>
-                <button id="newgame"
-                        data-show="{{ board.is_over() |tojson }}"
-                        data-on-click="@post('/room/{{ room_name }}/new', {contentType: 'form', selector: '#gameoptions'})">
-                    New Game
-                </button>
+                <div id="gameover-buttons">
+                    <button id="undo"
+                            data-show="{{ board.is_loss()|tojson }}"
+                            data-on-click="@post('/room/{{ room_name }}/undo')">
+                        Undo
+                    </button>
+                    <button id="newgame"
+                            data-show="{{ board.is_over() |tojson }}"
+                            data-on-click="@post('/room/{{ room_name }}/new', {contentType: 'form', selector: '#gameoptions'})">
+                        New Game
+                    </button>
+                </div>
             {% endblock %}
             <details id="optionsSection">
                 <summary role="button" class="outline secondary">Options</summary>
