@@ -161,7 +161,7 @@
                         </select>
                     </label>
                     <button type="button"
-                            data-on-click="@post('/{{ room_name }}/new', {contentType: 'form'});document.querySelector('#optionsSection').removeAttribute('open');">
+                            data-on-click="@post('/room/{{ room_name }}/new', {contentType: 'form'});document.querySelector('#optionsSection').removeAttribute('open');">
                         New Game
                     </button>
                 </form>
