@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     global kv
     try:
         kv = await js.create_key_value(
-            KeyValueConfig("undetermined", history=2, ttl=6 * 60 * 60)
+            KeyValueConfig("undetermined", history=2, ttl=2 * 60 * 60)
         )
     except nats.js.errors.BadRequestError as exc:
         # If we changed the config just delete and recreate the bucket
