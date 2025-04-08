@@ -25,7 +25,7 @@ from nats.js.kv import KeyValue
 from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import StreamingResponse, RedirectResponse
+from starlette.responses import StreamingResponse, RedirectResponse, FileResponse
 
 from undetermined import Board, NiceMode, AdjacencyType, Position
 
@@ -57,7 +57,7 @@ PACKAGE_DIR = Path(__file__).parent
 middleware = [
     Middleware(SessionMiddleware, secret_key="tawoerugeconaewmum12ea5teauem65")
 ]
-app = FastAPI(lifespan=lifespan, middleware=middleware)
+app = FastAPI(lifespan=lifespan, middleware=middleware, docs_url=None, redoc_url=None, openapi_url=None)
 templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
 templates.context_processors = [
     lambda request: {
@@ -109,6 +109,11 @@ class SSE(StreamingResponse):
     def __init__(self, *args, **kwargs):
         kwargs["headers"] = {**SSE_HEADERS, **kwargs.get("headers", {})}
         super().__init__(*args, **kwargs)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(PACKAGE_DIR/"static"/"favicon.ico")
 
 
 @app.get("/")
