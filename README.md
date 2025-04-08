@@ -1,13 +1,20 @@
 Minesweeper
 ===========
 
-Simple terminal based minesweeper. Python 3 required.
+Minesweeper. No losing from guessing. Two interfaces.
+
+The web interface is available (for now) at http://minesweeper.gazpachoking.net
+
 
 ![minesweeper](https://gazpachoking.github.io/minesweeper/minesweeper.emoji.png)
+![web](https://gazpachoking.github.io/minesweeper/minesweeper.web.png)
 
 Features
 --------
 
+- Two interfaces
+  - Play by yourself from the terminal. (boring)
+  - Play on the web, with ~~griefing~~ coop!
 - Cross platform
 - Kaboom mode:
   - Cruel but fair, where guessing is punished, 
@@ -21,6 +28,17 @@ Features
   - Clear all adjacent
   - Mark all adjacent
   - Shows spaces that were provably empty after a loss (marked with yellow)
+
+Running
+-------
+
+CLI
+===
+Check out the code. Run `uv run minesweeper`.
+
+Web
+===
+Check out the code. Run `docker compose up` to start the server. Connect to `http://localhost:8080`
 
 Controls
 --------
