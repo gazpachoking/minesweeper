@@ -1,0 +1,11 @@
+services:
+  nats:
+    image: nats:latest
+    command:
+      - "-js"
+  undetermined:
+    build: .
+    depends_on:
+      - nats
+    ports:
+      - "8080:8080"

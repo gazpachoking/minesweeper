@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Undetermined - {{ room_name }}</title>
+        <script type="module" src="/static/datastar.js"></script>
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+        <style>
+        #main {
+            margin: auto;
+            width: fit-content;
+            padding-top: 2rem;
+        }
+
+        #title {
+            text-align: center;
+            margin-bottom: 1em;
+        }
+
+        #board {
+            display: grid;
+            justify-content: center;
+            margin-bottom: 1.5em;
+        }
+
+        #game-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tile {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            text-align: center;
+            line-height: 30px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 80ms ease;
+        }
+
+        .tile.unrevealed {
+            background-color: #eee;
+        }
+
+        .tile.revealed {
+            background-color: #fff;
+        }
+
+        .tile.marked.mine {
+            border-color: green;
+            border-width: 2px;
+        }
+
+        .tile.revealed.mine {
+            border-color: red;
+            border-width: 2px;
+        }
+
+        .tile.wrong {
+            border-color: red;
+            border-width: 2px;
+        }
+
+        .tile.hover {
+            background-color: #b6b6b6;
+        }
+
+        .tile.adjacent-1 { color: blue; }
+        .tile.adjacent-2 { color: green; }
+        .tile.adjacent-3 { color: red; }
+        .tile.adjacent-4 { color: purple; }
+        .tile.adjacent-5 { color: maroon; }
+        .tile.adjacent-6 { color: turquoise; }
+        .tile.adjacent-7 { color: black; }
+        .tile.adjacent-8 { color: gray; }
+
+        #gameover-buttons {
+            display: flex;
+            gap: 1em;
+        }
+        </style>
+    </head>
+    <body data-on-load="@get('/room/{{ room_name }}/stream')">
+        <main id="main" class="content">
+            {% block main %}
+                <h1 id="title">
+                    🚩 Undeter<span style="color: orangered">mined</span> 💣
+                </h1>
+                <div id="game-info">
+                    <p>
+                        Mines Left: <span id="mines-left">{{ board.unmarked_mines }}</span>
+                    </p>
+                    <p>
+                        Time: <span id="time">{{ board.play_duration|int }}</span>
+                    </p>
+                </div>
+                <div class="board"
+                     id="board"
+                     style="grid-template-columns: repeat({{ board.width }}, 30px)"
+                     data-on-mouseleave="@get('/room/{{ room_name }}/mouseover?x=-1&y=-1')"
+                     data-on-click="@get('/room/{{ room_name }}/reveal?'+evt.target.dataset.xPos)"
+                     data-on-dblclick="@get('/room/{{ room_name }}/reveal_all?'+evt.target.dataset.xPos)"
+                     data-on-contextmenu__prevent="@get('/room/{{ room_name }}/mark?'+evt.target.dataset.xPos)"
+                     data-on-mouseover="@get('/room/{{ room_name }}/mouseover?'+evt.target.dataset.xPos)">
+                    {% for tile in board.all_tiles %}
+                        <div class="tile {{ " ".join(tile.classes) }}"
+                             data-x-pos="x={{ tile.pos.x }}&y={{ tile.pos.y }}"
+                             {% for h in hover %}
+                                {% if h.pos == tile.pos %}style="background-color: {{ h.color }}"{% endif %}
+                             {% endfor %}>
+                            {% if tile.revealed and tile.num_adjacent_mines %}
+                                {{ tile.num_adjacent_mines }}
+                            {% elif tile.marked %}
+                                🚩
+                            {% elif tile.revealed and tile.mine %}
+                                💥
+                            {% elif board.is_over() and tile.mine %}
+                                💣
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+                <div id="gameover-buttons">
+                    <button id="undo"
+                            data-show="{{ board.is_loss()|tojson }}"
+                            data-on-click="@post('/room/{{ room_name }}/undo')">
+                        Undo
+                    </button>
+                    <button id="newgame"
+                            data-show="{{ board.is_over() |tojson }}"
+                            data-on-click="@post('/room/{{ room_name }}/new', {contentType: 'form', selector: '#gameoptions'})">
+                        New Game
+                    </button>
+                </div>
+            {% endblock %}
+            <details id="optionsSection">
+                <summary role="button" class="outline secondary">Options</summary>
+                <form id="gameoptions">
+                    <fieldset class="grid">
+                        <label>
+                            Width
+                            <input type="number" name="width" value="{{ board.width }}" />
+                        </label>
+                        <label>
+                            Height
+                            <input type="number" name="height" value="{{ board.height }}" />
+                        </label>
+                    </fieldset>
+                    <label>
+                        Mines
+                        <input type="number" name="mines" value="{{ board.total_mines }}" />
+                    </label>
+                    <label>
+                        Niceness Mode
+                        <select name="nice_mode">
+                            {% for mode in nice_modes %}
+                                <option value="{{ mode.value }}"
+                                        {{ "selected" if board.nice_mode == mode else "" }}>
+                                    {{ mode.name|title }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        Adjacency Mode
+                        <select name="adjacency_mode">
+                            {% for mode in adjacency_modes %}
+                                <option value="{{ mode.value }}"
+                                        {{ "selected" if board.adjacency_mode == mode else "" }}>
+                                    {{ mode.name|title }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="button"
+                            data-on-click="@post('/room/{{ room_name }}/new', {contentType: 'form'});document.querySelector('#optionsSection').removeAttribute('open');">
+                        New Game
+                    </button>
+                </form>
+            </details>
+        </main>
+    </body>
+</html>
