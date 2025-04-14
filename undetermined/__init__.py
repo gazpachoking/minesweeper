@@ -64,22 +64,6 @@ class Tile:
         self.num_adjacent_mines = None
 
     @property
-    def classes(self):
-        classes = []
-        # classes.append("determined" if self.determined else "undetermined")
-        classes.append("revealed" if self.revealed else "unrevealed")
-        if self.board.is_loss() or self.board.is_win():
-            if self.mine:
-                classes.append("mine")
-            if self.marked and not self.mine:
-                classes.append("wrong")
-        if self.marked:
-            classes.append("marked")
-        if self.revealed and self.num_adjacent_mines:
-            classes.append(f"adjacent-{self.num_adjacent_mines}")
-        return classes
-
-    @property
     def undetermined(self) -> bool:
         return not self.determined
 

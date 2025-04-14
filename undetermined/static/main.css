@@ -1,0 +1,88 @@
+
+#main {
+    margin: auto;
+    width: fit-content;
+    padding-top: 2rem;
+}
+
+#title {
+    text-align: center;
+    margin-bottom: 1em;
+}
+#room-list {
+    text-align: center;
+}
+#room-list h2 {
+    margin-bottom: 0.5em;
+}
+#room-list p {
+    margin-bottom: 0.5em;
+}
+#room-list a:last-child {
+    margin-top: 1em;
+}
+#newroombutton {
+    margin-top: 1em;
+    width: auto;
+}
+#info {
+    padding-top: 1.5em;
+    padding-bottom: 1em;
+}
+#info h4 {
+    margin-bottom: 1em;
+}
+#info li {
+    list-style: none;
+}
+
+#board {
+    display: grid;
+    justify-content: center;
+    margin-bottom: 1.5em;
+    > div {
+        width: 30px;
+        height: 30px;
+        border: 1px solid #ccc;
+        text-align: center;
+        line-height: 30px;
+        cursor: pointer;
+        user-select: none;
+        background-color: #eee;
+        transition: background-color 80ms ease;
+
+        &.revealed {
+            background-color: #fff;
+        }
+        &.adjacent-1 { color: blue;}
+        &.adjacent-2 { color: green;}
+        &.adjacent-3 { color: red;}
+        &.adjacent-4 { color: purple;}
+        &.adjacent-5 { color: maroon;}
+        &.adjacent-6 { color: turquoise;}
+        &.adjacent-7 { color: black;}
+        &.adjacent-8 { color: gray;}
+        &.correct {
+            border-color: green;
+            border-width: 2px;
+        }
+        &.incorrect {
+            border-color: red;
+            border-width: 2px;
+        }
+        &.undetermined {
+            background-color: #f1d8aa;
+        }
+    }
+}
+
+#game-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#gameover-buttons {
+    display: flex;
+    gap: 1em;
+}

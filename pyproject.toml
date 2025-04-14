@@ -11,9 +11,8 @@ dependencies = [
     "click>=7.0",
     "datastar-py>=0.4.3",
     "fastapi>=0.115.12",
+    "htpy>=25.3.0",
     "itsdangerous>=2.2.0",
-    "jinja2>=3.1.6",
-    "jinja2-fragments>=1.8.0",
     "nats-py>=2.10.0",
     "python-multipart>=0.0.20",
     "setuptools>=78.1.0",
@@ -26,6 +25,6 @@ requires-python = ">=3.10"
 minesweeper = "undetermined.terminal_client:main"
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 

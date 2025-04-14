@@ -11,26 +11,29 @@ from typing import Annotated
 import nats
 import nats.errors
 import nats.js.errors
-from nats.js.api import KeyValueConfig
-from datastar_py import ServerSentEventGenerator, SSE_HEADERS
-
-from fastapi import FastAPI, Request, Depends, Form
+import uvicorn
+from datastar_py import SSE_HEADERS, ServerSentEventGenerator
+from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-import uvicorn
-from jinja2_fragments import render_block
+from htpy import Renderable
+from nats.js.api import KeyValueConfig
 from nats.js.errors import KeyNotFoundError
 from nats.js.kv import KeyValue
 from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import StreamingResponse, RedirectResponse, FileResponse
+from starlette.responses import FileResponse, RedirectResponse, StreamingResponse
 
-from undetermined import Board, NiceMode, AdjacencyType, Position
+from undetermined import AdjacencyType, Board, NiceMode, Position
+from undetermined.web_components import (
+    game_fragment,
+    game_page,
+    room_list_fragment,
+    room_list_page,
+)
 
-
-kv: KeyValue = None
+kv: KeyValue|None = None
 
 
 @asynccontextmanager
@@ -44,7 +47,7 @@ async def lifespan(app: FastAPI):
         kv = await js.create_key_value(
             KeyValueConfig("undetermined", history=2, ttl=2 * 60 * 60)
         )
-    except nats.js.errors.BadRequestError as exc:
+    except nats.js.errors.BadRequestError:
         # If we changed the config just delete and recreate the bucket
         print("removing kv store")
         await js.delete_key_value("undetermined")
@@ -57,14 +60,13 @@ PACKAGE_DIR = Path(__file__).parent
 middleware = [
     Middleware(SessionMiddleware, secret_key="tawoerugeconaewmum12ea5teauem65")
 ]
-app = FastAPI(lifespan=lifespan, middleware=middleware, docs_url=None, redoc_url=None, openapi_url=None)
-templates = Jinja2Templates(directory=PACKAGE_DIR / "templates")
-templates.context_processors = [
-    lambda request: {
-        "nice_modes": NiceMode,
-        "adjacency_modes": AdjacencyType,
-    }
-]
+app = FastAPI(
+    lifespan=lifespan,
+    middleware=middleware,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
 
 
@@ -87,8 +89,9 @@ async def get_session_id(request: Request):
     return request.session.setdefault("session_id", uuid.uuid4().hex)
 
 
-def get_position(x: int, y: int):
-    return Position(x, y)
+def get_position(pos: str):
+    x, y = pos.split(",")
+    return Position(int(x), int(y))
 
 
 async def get_rooms():
@@ -97,7 +100,8 @@ async def get_rooms():
     except nats.js.errors.NoKeysError:
         streams = []
     rooms = [r.removesuffix(".state") for r in streams if r.endswith(".state")]
-    return reversed(rooms)
+    rooms.reverse()
+    return rooms
 
 
 BoardDep = Annotated[Board, Depends(get_board)]
@@ -111,15 +115,20 @@ class SSE(StreamingResponse):
         super().__init__(*args, **kwargs)
 
 
+class HTPYResponse(StreamingResponse):
+    def __init__(self, renderable: Renderable, **kwargs):
+        super().__init__(renderable.iter_chunks())
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    return FileResponse(PACKAGE_DIR/"static"/"favicon.ico")
+    return FileResponse(PACKAGE_DIR / "static" / "favicon.ico")
 
 
 @app.get("/")
-async def index(request: Request):
+async def index():
     rooms = await get_rooms()
-    return templates.TemplateResponse(request, "index.html", {"rooms": rooms})
+    return HTPYResponse(room_list_page(rooms))
 
 
 @app.get("/room_list")
@@ -128,19 +137,15 @@ async def room_list():
         while True:
             rooms = await get_rooms()
             yield ServerSentEventGenerator.merge_fragments(
-                [
-                    render_block(
-                        templates.env, "index.html", "room_list", {"rooms": rooms}
-                    )
-                ]
+                [str(room_list_fragment(rooms))]
             )
             await asyncio.sleep(10)
 
     return SSE(gen())
 
 
-@app.get("/room")
-async def new_room(request: Request):
+@app.post("/room")
+async def new_room():
     animal = random.choice(
         (PACKAGE_DIR / "assets" / "animals.txt").open().readlines()
     ).strip()
@@ -148,14 +153,14 @@ async def new_room(request: Request):
         (PACKAGE_DIR / "assets" / "adjectives.txt").open().readlines()
     ).strip()
     room_name = f"{adjective.title()}{animal.title()}"
-    return RedirectResponse(f"/room/{room_name}", status_code=302)
+    def gen():
+        yield ServerSentEventGenerator.execute_script(f"setTimeout(() => window.location = '/room/{room_name}')")
+    return SSE(gen())
 
 
 @app.get("/room/{room_name}", response_class=HTMLResponse)
 async def root(request: Request, room_name: str, board: BoardDep):
-    return templates.TemplateResponse(
-        request, "game.html", {"board": board, "room_name": room_name}
-    )
+    return HTPYResponse(game_page(room_name=room_name, board=board))
 
 
 class HoverPos(BaseModel):
@@ -212,18 +217,7 @@ async def stream(request: Request, room_name: str, session_id: SessionDep):
                 continue
 
             yield ServerSentEventGenerator.merge_fragments(
-                [
-                    render_block(
-                        templates.env,
-                        "game.html",
-                        "main",
-                        {
-                            "board": board,
-                            "room_name": room_name,
-                            "hover": hovers.values(),
-                        },
-                    )
-                ]
+                [str(game_fragment(room_name, board, hovers.values()))]
             )
 
     return SSE(gen(), headers={"X-Accel-Buffering": "no"})
@@ -238,9 +232,7 @@ class RoomOptions(BaseModel):
 
 
 @app.post("/room/{room_name}/new")
-async def new(
-    request: Request, room_name: str, options: Annotated[RoomOptions, Form()]
-):
+async def new(room_name: str, options: Annotated[RoomOptions, Form()]):
     board = Board(
         options.width,
         options.height,

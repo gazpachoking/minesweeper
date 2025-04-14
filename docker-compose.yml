@@ -1,9 +1,12 @@
 services:
   nats:
     image: nats:latest
+    ports:
+      - 4222:4222
     command:
       - "-js"
   undetermined:
+    image: registry.gazpachoking.net/undetermined
     build: .
     depends_on:
       - nats
