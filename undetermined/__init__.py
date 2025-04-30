@@ -53,6 +53,12 @@ class NiceMode(Enum):
     CRUEL = "cruel"
 
 
+class ShowDetermined(Enum):
+    NO = "no"
+    ALWAYS = "always"
+    ON_LOSS = "on_loss"
+
+
 class Tile:
     def __init__(self, pos: Position, board: "Board"):
         self.pos = pos
@@ -120,6 +126,8 @@ class Board:
         num_mines: int,
         adjacency: AdjacencyType = AdjacencyType.STANDARD,
         niceness: NiceMode = NiceMode.CRUEL,
+        undo: bool = False,
+        show_determined: ShowDetermined = ShowDetermined.NO,
     ):
         if num_mines >= width * height:
             raise RuntimeError("More mines than space.")
@@ -136,6 +144,8 @@ class Board:
         self.moves = 0
         self.place_tiles()
         self.replace_mines()
+        self.undo = undo
+        self.show_determined = show_determined
 
     def new(self):
         self.status = GameState.NOT_STARTED

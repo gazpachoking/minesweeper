@@ -7,7 +7,7 @@ import htpy as h
 from htpy import Renderable
 from markupsafe import Markup
 
-from undetermined import NiceMode, AdjacencyType
+from undetermined import NiceMode, AdjacencyType, ShowDetermined
 
 if TYPE_CHECKING:
     from undetermined import Board, Tile
@@ -122,12 +122,17 @@ def tile_fragment(tile: Tile, hovers: typing.Iterable[HoverPos]):
                 classes.append("incorrect")
             elif tile.mine and tile.board.is_win():
                 classes.append("correct")
+    if tile.undetermined and (
+        tile.board.show_determined == ShowDetermined.ALWAYS
+        or tile.board.is_loss()
+        and tile.board.show_determined == ShowDetermined.ON_LOSS
+    ):
+        classes.append("undetermined")
 
     return h.div(
         id=f"{tile.pos.x},{tile.pos.y}",
         style=style,
         class_=classes,
-        data_class_undetermined=tile.board.is_loss() and tile.undetermined and "$cheat",
     )[content]
 
 
@@ -155,6 +160,7 @@ def game_fragment(
         )[[tile_fragment(tile, hovers) for tile in board.all_tiles]],
         h.div("#gameover-buttons")[
             board.is_loss()
+            and board.undo
             and h.button(
                 "#undo",
                 data_on_click=f"@post('/room/{room_name}/undo')",
@@ -173,7 +179,7 @@ def game_page(room_name: str, board: Board):
         h.h1("#title")["🚩 Undeter", h.span(style="color: orangered")["mined"], " 💣"],
         game_fragment(room_name, board),
         h.details("#optionsSection")[
-            h.summary(".outline.secondary", role="button")["Options"],
+            h.summary(".secondary", role="button")["Options"],
             h.form("#gameoptions")[
                 h.fieldset(".grid")[
                     h.label[
@@ -205,7 +211,9 @@ def game_page(room_name: str, board: Board):
                     "Niceness Mode",
                     h.select(name="nice_mode")[
                         [
-                            h.option(value=mode.value, selected=mode==board.nice_mode)[mode.name.title()]
+                            h.option(
+                                value=mode.value, selected=mode == board.nice_mode
+                            )[mode.name.title()]
                             for mode in NiceMode
                         ],
                     ],
@@ -214,15 +222,32 @@ def game_page(room_name: str, board: Board):
                     "Adjacency Mode",
                     h.select(name="adjacency_mode")[
                         [
-                            h.option(value=mode.value, selected=mode==board.adjacency_mode)[mode.name.title()]
+                            h.option(
+                                value=mode.value, selected=mode == board.adjacency_mode
+                            )[mode.name.title()]
                             for mode in AdjacencyType
                         ],
                     ],
                 ],
-                h.label[
-                    h.input(type="checkbox", data_bind="cheat"),
-                    "Reveal Valid Moves on Loss (cheat!)",
+                h.fieldset[
+                    h.legend[h.strong["Cheating"]],
+                    h.label[
+                        h.input(type="checkbox", name="undo", checked=board.undo),
+                        "Allow Undo",
+                    ],
                 ],
+                    h.label[
+                        "Show Determined Tiles",
+                        h.select(name="show_determined")[
+                            [
+                                h.option(
+                                    value=mode.value,
+                                    selected=mode == board.show_determined,
+                                )[mode.name.title().replace("_", " ")]
+                                for mode in ShowDetermined
+                            ]
+                        ],
+                    ],
                 h.button(
                     type="button",
                     data_on_click=f"@post('/room/{room_name}/new', {{contentType: 'form'}});document.querySelector('#optionsSection').removeAttribute('open');",

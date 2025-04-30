@@ -8,11 +8,11 @@ authors = [
 license = { text = "MIT" }
 dependencies = [
     "asciimatics~=1.11.0",
+    "brotli-asgi>=1.4.0",
     "click>=7.0",
     "datastar-py>=0.4.3",
     "fastapi>=0.115.12",
     "htpy>=25.3.0",
-    "itsdangerous>=2.2.0",
     "nats-py>=2.10.0",
     "python-multipart>=0.0.20",
     "setuptools>=78.1.0",

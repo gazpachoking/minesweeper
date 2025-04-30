@@ -12,6 +12,7 @@ import nats
 import nats.errors
 import nats.js.errors
 import uvicorn
+from brotli_asgi import BrotliMiddleware
 from datastar_py import SSE_HEADERS, ServerSentEventGenerator
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, Response
@@ -22,10 +23,9 @@ from nats.js.errors import KeyNotFoundError
 from nats.js.kv import KeyValue
 from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import FileResponse, RedirectResponse, StreamingResponse
+from starlette.responses import FileResponse, StreamingResponse
 
-from undetermined import AdjacencyType, Board, NiceMode, Position
+from undetermined import AdjacencyType, Board, NiceMode, Position, ShowDetermined
 from undetermined.web_components import (
     game_fragment,
     game_page,
@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
 
 PACKAGE_DIR = Path(__file__).parent
 middleware = [
-    Middleware(SessionMiddleware, secret_key="tawoerugeconaewmum12ea5teauem65")
+    Middleware(BrotliMiddleware, lgwin=22, quality=6),
 ]
 app = FastAPI(
     lifespan=lifespan,
@@ -74,7 +74,7 @@ async def get_board(room_name: str):
     try:
         entry = await kv.get(f"{room_name}.state")
     except KeyNotFoundError:
-        board = Board(12, 12, 30)
+        board = Board(14, 14, 50, undo=True)
         # Using pickle is super inefficient, but :shrug:
         await kv.put(f"{room_name}.state", pickle.dumps(board))
     else:
@@ -85,8 +85,12 @@ async def get_board(room_name: str):
         await kv.put(f"{room_name}.state", pickle.dumps(board))
 
 
-async def get_session_id(request: Request):
-    return request.session.setdefault("session_id", uuid.uuid4().hex)
+async def get_session_id(request: Request, response: Response):
+    if "session_id" not in request.cookies:
+        session_id = uuid.uuid4().hex
+        response.set_cookie(key="session_id",value=session_id)
+        return session_id
+    return request.cookies["session_id"]
 
 
 def get_position(pos: str):
@@ -111,13 +115,8 @@ PositionDep = Annotated[Position, Depends(get_position)]
 
 class SSE(StreamingResponse):
     def __init__(self, *args, **kwargs):
-        kwargs["headers"] = {**SSE_HEADERS, **kwargs.get("headers", {})}
+        kwargs["headers"] = {**SSE_HEADERS, "X-Accel-Buffering": "no", **kwargs.get("headers", {})}
         super().__init__(*args, **kwargs)
-
-
-class HTPYResponse(StreamingResponse):
-    def __init__(self, renderable: Renderable, **kwargs):
-        super().__init__(renderable.iter_chunks())
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -125,10 +124,10 @@ async def favicon():
     return FileResponse(PACKAGE_DIR / "static" / "favicon.ico")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def index():
     rooms = await get_rooms()
-    return HTPYResponse(room_list_page(rooms))
+    return str(room_list_page(rooms))
 
 
 @app.get("/room_list")
@@ -160,7 +159,7 @@ async def new_room():
 
 @app.get("/room/{room_name}", response_class=HTMLResponse)
 async def root(request: Request, room_name: str, board: BoardDep):
-    return HTPYResponse(game_page(room_name=room_name, board=board))
+    return str(game_page(room_name=room_name, board=board))
 
 
 class HoverPos(BaseModel):
@@ -220,7 +219,7 @@ async def stream(request: Request, room_name: str, session_id: SessionDep):
                 [str(game_fragment(room_name, board, hovers.values()))]
             )
 
-    return SSE(gen(), headers={"X-Accel-Buffering": "no"})
+    return SSE(gen())
 
 
 class RoomOptions(BaseModel):
@@ -229,9 +228,11 @@ class RoomOptions(BaseModel):
     mines: int
     nice_mode: NiceMode
     adjacency_mode: AdjacencyType
+    undo: bool = False
+    show_determined: ShowDetermined
 
 
-@app.post("/room/{room_name}/new")
+@app.post("/room/{room_name}/new", response_class=Response, status_code=204)
 async def new(room_name: str, options: Annotated[RoomOptions, Form()]):
     board = Board(
         options.width,
@@ -239,48 +240,43 @@ async def new(room_name: str, options: Annotated[RoomOptions, Form()]):
         options.mines,
         niceness=options.nice_mode,
         adjacency=options.adjacency_mode,
+        undo=options.undo,
+        show_determined=options.show_determined,
     )
     await kv.put(f"{room_name}.state", pickle.dumps(board))
-    return Response(status_code=204)
 
 
-@app.get("/room/{room_name}/reveal")
+@app.get("/room/{room_name}/reveal", response_class=Response, status_code=204)
 async def on_click(pos: PositionDep, board: BoardDep):
     board.reveal(pos)
-    return Response(status_code=204)
 
 
-@app.get("/room/{room_name}/mark")
+@app.get("/room/{room_name}/mark", response_class=Response, status_code=204)
 async def on_mark(pos: PositionDep, board: BoardDep):
     if board[pos].revealed:
         board.mark_all(pos)
     else:
         board.mark(pos)
 
-    return Response(status_code=204)
 
-
-@app.get("/room/{room_name}/reveal_all")
+@app.get("/room/{room_name}/reveal_all", response_class=Response, status_code=204)
 async def on_dbl(pos: PositionDep, board: BoardDep):
     board.reveal_all(pos)
-    return Response(status_code=204)
 
 
-@app.post("/room/{room_name}/undo")
+@app.post("/room/{room_name}/undo", response_class=Response, status_code=204)
 async def undo(room_name: str):
     hist = await kv.history(f"{room_name}.state")
     if len(hist) >= 2:
         await kv.put(f"{room_name}.state", hist[-2].value)
-    return Response(status_code=204)
 
 
-@app.get("/room/{room_name}/mouseover")
+@app.get("/room/{room_name}/mouseover", response_class=Response, status_code=204)
 async def on_mouseover(room_name: str, pos: PositionDep, session_id: SessionDep):
     await kv.put(
         f"{room_name}.mouse.{session_id}",
         HoverPos(pos=pos, session=session_id).model_dump_json().encode(),
     )
-    return Response(status_code=204)
 
 
 if __name__ == "__main__":
