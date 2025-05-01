@@ -130,29 +130,27 @@ class Board:
         show_determined: ShowDetermined = ShowDetermined.NO,
     ):
         if num_mines >= width * height:
-            raise RuntimeError("More mines than space.")
-        self.field = {}
-        self.width = width
-        self.height = height
-        self.total_mines = num_mines
-        self.start_time = 0.0
-        self.end_time = 0.0
-        self.cursor = Position(0, 0)
-        self.adjacency_mode = adjacency
-        self.nice_mode = niceness
-        self.status = GameState.NOT_STARTED
-        self.moves = 0
+            raise RuntimeError("Too many mines for the board size.")
+        self.field: dict[Position, Tile] = {}
+        self.width: int = width
+        self.height: int = height
+        self.total_mines: int = num_mines
+        self.start_time: float = 0.0
+        self.end_time: float = 0.0
+        self.cursor: Position = Position(0, 0)
+        self.adjacency_mode: AdjacencyType = adjacency
+        self.nice_mode: NiceMode = niceness
+        self.status: GameState = GameState.NOT_STARTED
+        self.moves: int = 0
+        self.undo: bool = undo
+        self.show_determined: bool = show_determined
         self.place_tiles()
-        self.replace_mines()
-        self.undo = undo
-        self.show_determined = show_determined
 
     def new(self):
         self.status = GameState.NOT_STARTED
-        self.start_time = 0
-        self.end_time = 0
+        self.start_time = 0.0
+        self.end_time = 0.0
         self.place_tiles()
-        self.replace_mines()
         self.moves += 1
 
     @property
@@ -187,7 +185,10 @@ class Board:
             for col_num in range(self.width):
                 pos = Position(col_num, row_num)
                 self.field[pos] = Tile(pos=pos, board=self)
-        self.status = GameState.IN_PROGRESS
+        if self.nice_mode == NiceMode.NORMAL:
+            self.replace_mines()
+            for t in self.tiles():
+                t.determined = True
 
     def solver(self):
         solver = z3.Solver()
@@ -221,7 +222,7 @@ class Board:
     def replace_mines(self):
         """Places all mines on tiles randomly, but in accordance with revealed hints."""
         solver = self.solver()
-        assert solver.check() == z3.sat
+        solver.check()
         model = solver.model()
         for t in self.tiles(determined=False):
             t.mine = bool(model[t.var])
@@ -230,14 +231,17 @@ class Board:
         """Determine any tiles that should no longer be variable."""
         solver = self.solver()
         # Lock in certain tiles that must/must not be mines.
-        for t in self.tiles(revealed=False, determined=False, on_boundary=True):
+        for t in self.tiles(determined=False):
             can_be_mine = solver.check(t.var) == z3.sat
+            if not can_be_mine:
+                t.determined = True
+                continue
             can_be_open = solver.check(z3.Not(t.var)) == z3.sat
-            if not (can_be_mine and can_be_open):
+            if not can_be_open:
                 t.determined = True
 
     def reveal(self, pos: Position, cascade=False):
-        if self.status != GameState.IN_PROGRESS:
+        if self.status in [GameState.WON, GameState.LOST]:
             return
         tile = self[pos]
         if tile.marked or tile.revealed:
@@ -247,22 +251,23 @@ class Board:
 
         changed = False
         # First click, prevent hitting mine, start the timer
-        if not any(self.tiles(determined=True)):
+        if self.status == GameState.NOT_STARTED:
+            self.status = GameState.IN_PROGRESS
             self.start_time = time.time()
-            changed = tile.mine
+            changed = True
             tile.mine = False
         # Tile can still be changed, figure out if we'll change it
-        elif not tile.determined and not cascade and self.nice_mode != NiceMode.NORMAL:
+        elif tile.undetermined and not cascade:
             safe_moves = any(
-                self.tiles(on_boundary=True, mine=False, determined=True, revealed=False)
+                self.tiles(mine=False, determined=True, revealed=False)
             )
             boundary_moves = list(self.tiles(on_boundary=True, revealed=False))
-            if safe_moves and self.nice_mode == NiceMode.CRUEL:
+            if self.nice_mode == NiceMode.CRUEL and (safe_moves or tile not in boundary_moves):
                 changed = not tile.mine
                 tile.mine = True
             # If there are no safe moves, guarantee next boundary move is safe.
             # Or, if there are no boundary moves, guarantee any guess is safe.
-            elif NiceMode.NICE or not boundary_moves or tile in boundary_moves:
+            elif self.nice_mode == NiceMode.NICE or not boundary_moves or tile in boundary_moves:
                 changed = tile.mine
                 tile.mine = False
         tile.determined = True
