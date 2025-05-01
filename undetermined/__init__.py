@@ -88,30 +88,6 @@ class Tile:
     @property
     def var(self):
         return z3.Bool(f"t{self.pos.x},{self.pos.y}")
-    #
-    # def serialize(self) -> int:
-    #     state = TileState(0)
-    #     if self.marked:
-    #         state |= TileState.MARKED
-    #     if self.mine:
-    #         state |= TileState.MINE
-    #     if self.determined:
-    #         state |= TileState.DETERMINED
-    #     if self.revealed:
-    #         state |= TileState.REVEALED
-    #     return int(state)
-    #
-    # @classmethod
-    # def deserialize(cls, pos: Position, board: "Board", state: int | TileState):
-    #     tile = cls(pos, board)
-    #     state = TileState(state)
-    #     tile.marked = TileState.MARKED in state
-    #     tile.mine = TileState.MINE in state
-    #     tile.revealed = TileState.REVEALED in state
-    #     tile.determined = TileState.DETERMINED in state
-    #     return tile
-
-
 
 
     def __repr__(self):
@@ -258,18 +234,24 @@ class Board:
             tile.mine = False
         # Tile can still be changed, figure out if we'll change it
         elif tile.undetermined and not cascade:
-            safe_moves = any(
-                self.tiles(mine=False, determined=True, revealed=False)
+            safe_moves = any(self.tiles(mine=False, determined=True, revealed=False))
+            boundary_moves = list(
+                t
+                for t in self.tiles(on_boundary=True, revealed=False)
+                if not (t.determined and t.mine)
             )
-            boundary_moves = list(self.tiles(on_boundary=True, revealed=False))
-            if self.nice_mode == NiceMode.CRUEL and (safe_moves or tile not in boundary_moves):
-                changed = not tile.mine
-                tile.mine = True
-            # If there are no safe moves, guarantee next boundary move is safe.
-            # Or, if there are no boundary moves, guarantee any guess is safe.
-            elif self.nice_mode == NiceMode.NICE or not boundary_moves or tile in boundary_moves:
+            # In nice mode you can always pick any undetermined tile
+            if self.nice_mode == NiceMode.NICE:
                 changed = tile.mine
                 tile.mine = False
+            # When there are no safe moves, allow a boundary move if there is one, otherwise allow anything
+            if not safe_moves and (not boundary_moves or tile in boundary_moves):
+                changed = tile.mine
+                tile.mine = False
+            # In cruel mode you must always pick a safe move or boundary if available
+            elif self.nice_mode == NiceMode.CRUEL:
+                changed = not tile.mine
+                tile.mine = True
         tile.determined = True
 
         # If we changed the state of a mine, recalculate all mines into valid positions

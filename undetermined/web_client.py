@@ -33,7 +33,7 @@ from undetermined.web_components import (
     room_list_page,
 )
 
-kv: KeyValue|None = None
+kv: KeyValue | None = None
 
 
 @asynccontextmanager
@@ -88,7 +88,7 @@ async def get_board(room_name: str):
 async def get_session_id(request: Request, response: Response):
     if "session_id" not in request.cookies:
         session_id = uuid.uuid4().hex
-        response.set_cookie(key="session_id",value=session_id)
+        response.set_cookie(key="session_id", value=session_id)
         return session_id
     return request.cookies["session_id"]
 
@@ -115,7 +115,11 @@ PositionDep = Annotated[Position, Depends(get_position)]
 
 class SSE(StreamingResponse):
     def __init__(self, *args, **kwargs):
-        kwargs["headers"] = {**SSE_HEADERS, "X-Accel-Buffering": "no", **kwargs.get("headers", {})}
+        kwargs["headers"] = {
+            **SSE_HEADERS,
+            "X-Accel-Buffering": "no",
+            **kwargs.get("headers", {}),
+        }
         super().__init__(*args, **kwargs)
 
 
@@ -152,8 +156,12 @@ async def new_room():
         (PACKAGE_DIR / "assets" / "adjectives.txt").open().readlines()
     ).strip()
     room_name = f"{adjective.title()}{animal.title()}"
+
     def gen():
-        yield ServerSentEventGenerator.execute_script(f"setTimeout(() => window.location = '/room/{room_name}')")
+        yield ServerSentEventGenerator.execute_script(
+            f"setTimeout(() => window.location = '/room/{room_name}')"
+        )
+
     return SSE(gen())
 
 
