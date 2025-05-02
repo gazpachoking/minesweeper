@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
 from starlette.responses import FileResponse, StreamingResponse
 
-from undetermined import AdjacencyType, Board, NiceMode, Position, ShowDetermined
+from undetermined import AdjacencyType, Board, NiceMode, Position, ShowDetermined, GameState
 from undetermined.web_components import (
     game_fragment,
     game_page,
@@ -196,16 +196,17 @@ async def stream(request: Request, room_name: str, session_id: SessionDep):
                 "window.location.replace('/')"
             )
             return
-        board = pickle.loads(state.value)
+        board: Board = pickle.loads(state.value)
         watcher = await kv.watch(f"{room_name}.>")
         hovers = {}
         while True:
             try:
                 update = await watcher.updates(timeout=1)
             except nats.errors.TimeoutError:
-                yield ServerSentEventGenerator.merge_fragments(
-                    [f'<span id="time">{int(board.play_duration)}</span>']
-                )
+                if board.status == GameState.IN_PROGRESS:
+                    yield ServerSentEventGenerator.merge_signals(
+                        {"time": int(board.play_duration)},
+                    )
                 update = None
 
             if not update:

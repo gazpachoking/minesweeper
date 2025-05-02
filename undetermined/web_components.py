@@ -145,7 +145,7 @@ def game_fragment(
                 "Mines Left: ",
                 h.span("#mines-left")[board.unmarked_mines],
             ],
-            h.p["Time: ", h.span("#time")[int(board.play_duration)]],
+            h.p["Time: ", h.span(data_signals_time=int(board.play_duration), data_text="$time")],
         ],
         h.div(
             "#board.board",
