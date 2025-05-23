@@ -148,12 +148,8 @@ wheels = [
 
 [[package]]
 name = "datastar-py"
-version = "0.4.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/41/7b/68c1440f9fe092d462d1e6fa8f10bd9b68ac81422423d8176d6cfeafb87d/datastar_py-0.4.3.tar.gz", hash = "sha256:1b74dd0a0ed184a8df4049caf8a6827e60a18bf97a80cc8d676422630b7e2fde", size = 66465 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/c6/b34230cb1ab97f28e1d384261067e9962fd658e12141ec9c412c3200ca8e/datastar_py-0.4.3-py3-none-any.whl", hash = "sha256:97fce29952a5d2ba49705a2c65fd4b20a0ebd81c88dab469c85428a27c0ddf4c", size = 6875 },
-]
+version = "0.4.2"
+source = { git = "https://github.com/starfederation/datastar?subdirectory=sdk%2Fpython#79b940af08e4ad759963381d4b93d754cb1b7044" }
 
 [[package]]
 name = "exceptiongroup"
@@ -584,7 +580,7 @@ requires-dist = [
     { name = "asciimatics", specifier = "~=1.11.0" },
     { name = "brotli-asgi", specifier = ">=1.4.0" },
     { name = "click", specifier = ">=7.0" },
-    { name = "datastar-py", specifier = ">=0.4.3" },
+    { name = "datastar-py", git = "https://github.com/starfederation/datastar?subdirectory=sdk%2Fpython" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "htpy", specifier = ">=25.3.0" },
     { name = "nats-py", specifier = ">=2.10.0" },

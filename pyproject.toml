@@ -10,7 +10,7 @@ dependencies = [
     "asciimatics~=1.11.0",
     "brotli-asgi>=1.4.0",
     "click>=7.0",
-    "datastar-py>=0.4.3",
+    "datastar-py>=0.4.4",
     "fastapi>=0.115.12",
     "htpy>=25.3.0",
     "nats-py>=2.10.0",
@@ -23,6 +23,9 @@ requires-python = ">=3.10"
 
 [project.scripts]
 minesweeper = "undetermined.terminal_client:main"
+
+[tool.uv.sources]
+datastar-py = { git = "https://github.com/starfederation/datastar", subdirectory = "sdk/python"}
 
 [build-system]
 requires = ["setuptools>=61.0"]

@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import os
 import pickle
 import random
@@ -13,19 +14,26 @@ import nats.errors
 import nats.js.errors
 import uvicorn
 from brotli_asgi import BrotliMiddleware
-from datastar_py import SSE_HEADERS, ServerSentEventGenerator
+from datastar_py import ServerSentEventGenerator
+from datastar_py.fastapi import DatastarStreamingResponse
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from htpy import Renderable
 from nats.js.api import KeyValueConfig
 from nats.js.errors import KeyNotFoundError
 from nats.js.kv import KeyValue
 from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
-from starlette.responses import FileResponse, StreamingResponse
+from starlette.responses import FileResponse
 
-from undetermined import AdjacencyType, Board, NiceMode, Position, ShowDetermined, GameState
+from undetermined import (
+    AdjacencyType,
+    Board,
+    NiceMode,
+    Position,
+    ShowDetermined,
+    GameState,
+)
 from undetermined.web_components import (
     game_fragment,
     game_page,
@@ -113,14 +121,7 @@ SessionDep = Annotated[str, Depends(get_session_id)]
 PositionDep = Annotated[Position, Depends(get_position)]
 
 
-class SSE(StreamingResponse):
-    def __init__(self, *args, **kwargs):
-        kwargs["headers"] = {
-            **SSE_HEADERS,
-            "X-Accel-Buffering": "no",
-            **kwargs.get("headers", {}),
-        }
-        super().__init__(*args, **kwargs)
+SSE = functools.partial(DatastarStreamingResponse, headers={"X-Accel-Buffering": "no"})
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -139,9 +140,7 @@ async def room_list():
     async def gen():
         while True:
             rooms = await get_rooms()
-            yield ServerSentEventGenerator.merge_fragments(
-                [str(room_list_fragment(rooms))]
-            )
+            yield ServerSentEventGenerator.merge_fragments(room_list_fragment(rooms))
             await asyncio.sleep(10)
 
     return SSE(gen())
@@ -205,7 +204,7 @@ async def stream(request: Request, room_name: str, session_id: SessionDep):
             except nats.errors.TimeoutError:
                 if board.status == GameState.IN_PROGRESS:
                     yield ServerSentEventGenerator.merge_signals(
-                        {"time": int(board.play_duration)},
+                        {"_time": int(board.play_duration)},
                     )
                 update = None
 
@@ -225,7 +224,7 @@ async def stream(request: Request, room_name: str, session_id: SessionDep):
                 continue
 
             yield ServerSentEventGenerator.merge_fragments(
-                [str(game_fragment(room_name, board, hovers.values()))]
+                game_fragment(room_name, board, hovers.values())
             )
 
     return SSE(gen())
