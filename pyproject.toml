@@ -1,6 +1,6 @@
 [project]
 name = "undetermined"
-version = "0.2.0"
+version = "0.2.1"
 description = "Cross-platform terminal or web based minesweeper."
 authors = [
     { name = "Chase Sterling", email = "chase.sterling@gmail.com" }
@@ -24,8 +24,8 @@ requires-python = ">=3.10"
 [project.scripts]
 minesweeper = "undetermined.terminal_client:main"
 
-[tool.uv.sources]
-datastar-py = { git = "https://github.com/starfederation/datastar", subdirectory = "sdk/python"}
+#[tool.uv.sources]
+#datastar-py = { git = "https://github.com/starfederation/datastar", subdirectory = "sdk/python"}
 
 [build-system]
 requires = ["setuptools>=61.0"]
