@@ -108,8 +108,8 @@ class Board:
         if num_mines >= width * height:
             raise RuntimeError("Too many mines for the board size.")
         self.field: dict[Position, Tile] = {}
-        self.width: int = width
-        self.height: int = height
+        self.width: int = min(width, 30)
+        self.height: int = min(height, 30)
         self.total_mines: int = num_mines
         self.start_time: float = 0.0
         self.end_time: float = 0.0

@@ -188,6 +188,8 @@ def game_page(room_name: str, board: Board):
                             type="number",
                             name="width",
                             value=board.width,
+                            min=2,
+                            max=30,
                         ),
                     ],
                     h.label[
@@ -196,6 +198,8 @@ def game_page(room_name: str, board: Board):
                             type="number",
                             name="height",
                             value=board.height,
+                            min=2,
+                            max=30,
                         ),
                     ],
                 ],
