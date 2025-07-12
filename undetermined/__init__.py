@@ -1,8 +1,6 @@
-import itertools
 import time
 import typing
-from collections import namedtuple
-from enum import Enum, Flag, auto, IntFlag
+from enum import Enum, auto, IntFlag
 from itertools import product, chain
 from random import shuffle
 from typing import NamedTuple
@@ -88,7 +86,6 @@ class Tile:
     @property
     def var(self):
         return z3.Bool(f"t{self.pos.x},{self.pos.y}")
-
 
     def __repr__(self):
         return f"Tile(pos={self.pos}, determined={self.determined}, mine={self.mine}, revealed={self.revealed})"

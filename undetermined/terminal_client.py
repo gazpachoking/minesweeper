@@ -55,7 +55,7 @@ STYLES = {
         7: "７",
         8: "８",
         9: "９",
-    }
+    },
 }
 
 
@@ -172,7 +172,9 @@ class MineField(Widget):
             if self._board.status in [GameState.WON, GameState.LOST]:
                 return
             self.focus()
-            pos = Position(int(event.x / self._style["width"]) - self._x, event.y - self._y)
+            pos = Position(
+                int(event.x / self._style["width"]) - self._x, event.y - self._y
+            )
             if not self._board.in_bounds(pos):
                 return
             self._board.cursor = pos
@@ -208,7 +210,7 @@ class GameBoard(Frame):
         super().__init__(
             screen,
             board.height + 4,
-            (board.width * self._style['width']) + 2,
+            (board.width * self._style["width"]) + 2,
             title="Minesweeper",
             hover_focus=False,
         )
@@ -299,7 +301,7 @@ def main(size, mines, adjacency, niceness, style):
         try:
             Screen.wrapper(run_scene, arguments=[board, style], unicode_aware=True)
             sys.exit(0)
-        except ResizeScreenError as e:
+        except ResizeScreenError:
             pass
 
 
