@@ -4,6 +4,7 @@ import typing
 from typing import TYPE_CHECKING
 
 import htpy as h
+from datastar_py import attribute_generator as data
 from htpy import Renderable
 from markupsafe import Markup
 
@@ -27,7 +28,7 @@ def layout_page(title: str, content: Renderable, update_sse: str | None = None):
             ),
             h.link(rel="stylesheet", href="/static/main.css"),
         ],
-        h.body(data_on_load=update_sse)[content],
+        h.body(data.on_load(update_sse))[content],
     ]
 
 
@@ -35,7 +36,7 @@ def room_list_fragment(rooms: typing.Iterable[str]):
     return h.div("#room-list")[
         h.h2["Room List"],
         [h.p[h.a(href=f"/room/{room}")[room]] for room in rooms],
-        h.button("#newroombutton", role="button", data_on_click="@post('/room')")[
+        h.button("#newroombutton", data.on("click", "@post('/room')"), role="button")[
             "New Room"
         ],
     ]
@@ -145,30 +146,40 @@ def game_fragment(
                 "Mines Left: ",
                 h.span("#mines-left")[board.unmarked_mines],
             ],
-            h.p["Time: ", h.span({"data-signals-_time": int(board.play_duration), "data-text": "$_time"})],
+            h.p[
+                "Time: ",
+                h.span[int(board.play_duration)],
+            ],
         ],
         h.div(
             "#board.board",
-            {
-                "data-on-contextmenu__prevent": f"@get('/room/{room_name}/mark?pos='+evt.target.id)"
-            },
+            data.on(
+                "contextmenu", f"@get('/room/{room_name}/mark?pos='+evt.target.id)"
+            ).prevent,
+            data.on("mouseleave", f"@get('/room/{room_name}/mouseover?pos=-1,-1')"),
+            data.on("click", f"@get('/room/{room_name}/reveal?pos='+evt.target.id)"),
+            data.on(
+                "dblclick", f"@get('/room/{room_name}/reveal_all?pos='+evt.target.id)"
+            ),
+            data.on(
+                "mouseover", f"@get('/room/{room_name}/mouseover?pos='+evt.target.id)"
+            ).throttle(80),
             style=f"grid-template-columns: repeat({board.width}, 30px)",
-            data_on_mouseleave=f"@get('/room/{room_name}/mouseover?pos=-1,-1')",
-            data_on_click=f"@get('/room/{room_name}/reveal?pos='+evt.target.id)",
-            data_on_dblclick=f"@get('/room/{room_name}/reveal_all?pos='+evt.target.id)",
-            data_on_mouseover=f"@get('/room/{room_name}/mouseover?pos='+evt.target.id)",
         )[[tile_fragment(tile, hovers) for tile in board.all_tiles]],
         h.div("#gameover-buttons")[
             board.is_loss()
             and board.undo
             and h.button(
                 "#undo",
-                data_on_click=f"@post('/room/{room_name}/undo')",
+                data.on("click", f"@post('/room/{room_name}/undo')"),
             )["Undo"],
             board.is_over()
             and h.button(
                 "#newgame",
-                data_on_click=f"@post('/room/{room_name}/new', {{contentType: 'form', selector: '#gameoptions'}})",
+                data.on(
+                    "click",
+                    f"@post('/room/{room_name}/new', {{contentType: 'form', selector: '#gameoptions'}})",
+                ),
             )["New Game"],
         ],
     ]
@@ -178,7 +189,7 @@ def game_page(room_name: str, board: Board):
     content = h.main("#main.content")[
         h.h1("#title")["🚩 Undeter", h.span(style="color: orangered")["mined"], " 💣"],
         game_fragment(room_name, board),
-        h.details("#optionsSection")[
+        h.details("#optionsSection", data_ref="options")[
             h.summary(".secondary", role="button")["Options"],
             h.form("#gameoptions")[
                 h.fieldset(".grid")[
@@ -240,21 +251,25 @@ def game_page(room_name: str, board: Board):
                         "Allow Undo",
                     ],
                 ],
-                    h.label[
-                        "Show Determined Tiles",
-                        h.select(name="show_determined")[
-                            [
-                                h.option(
-                                    value=mode.value,
-                                    selected=mode == board.show_determined,
-                                )[mode.name.title().replace("_", " ")]
-                                for mode in ShowDetermined
-                            ]
-                        ],
+                h.label[
+                    "Show Determined Tiles",
+                    h.select(name="show_determined")[
+                        [
+                            h.option(
+                                value=mode.value,
+                                selected=mode == board.show_determined,
+                            )[mode.name.title().replace("_", " ")]
+                            for mode in ShowDetermined
+                        ]
                     ],
+                ],
                 h.button(
+                    data.on(
+                        "click",
+                        f"""@post('/room/{room_name}/new', {{contentType: 'form'}});
+                        $options.removeAttribute('open');""",
+                    ),
                     type="button",
-                    data_on_click=f"@post('/room/{room_name}/new', {{contentType: 'form'}});document.querySelector('#optionsSection').removeAttribute('open');",
                 )["New Game"],
             ],
         ],

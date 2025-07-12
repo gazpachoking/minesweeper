@@ -24,8 +24,8 @@ requires-python = ">=3.10"
 [project.scripts]
 minesweeper = "undetermined.terminal_client:main"
 
-#[tool.uv.sources]
-#datastar-py = { git = "https://github.com/starfederation/datastar", subdirectory = "sdk/python"}
+[tool.uv.sources]
+datastar-py = { git = "https://github.com/starfederation/datastar", subdirectory = "sdk/python"}
 
 [build-system]
 requires = ["setuptools>=61.0"]

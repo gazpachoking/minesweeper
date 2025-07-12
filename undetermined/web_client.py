@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import os
 import pickle
 import random
@@ -14,8 +13,8 @@ import nats.errors
 import nats.js.errors
 import uvicorn
 from brotli_asgi import BrotliMiddleware
-from datastar_py import ServerSentEventGenerator
-from datastar_py.fastapi import DatastarStreamingResponse
+from datastar_py import ServerSentEventGenerator as SSE
+from datastar_py.fastapi import datastar_response
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -121,9 +120,6 @@ SessionDep = Annotated[str, Depends(get_session_id)]
 PositionDep = Annotated[Position, Depends(get_position)]
 
 
-SSE = functools.partial(DatastarStreamingResponse, headers={"X-Accel-Buffering": "no"})
-
-
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return FileResponse(PACKAGE_DIR / "static" / "favicon.ico")
@@ -136,17 +132,16 @@ async def index():
 
 
 @app.get("/room_list")
+@datastar_response
 async def room_list():
-    async def gen():
-        while True:
-            rooms = await get_rooms()
-            yield ServerSentEventGenerator.merge_fragments(room_list_fragment(rooms))
-            await asyncio.sleep(10)
-
-    return SSE(gen())
+    while True:
+        rooms = await get_rooms()
+        yield SSE.patch_elements(room_list_fragment(rooms))
+        await asyncio.sleep(10)
 
 
 @app.post("/room")
+@datastar_response
 async def new_room():
     animal = random.choice(
         (PACKAGE_DIR / "assets" / "animals.txt").open().readlines()
@@ -156,12 +151,7 @@ async def new_room():
     ).strip()
     room_name = f"{adjective.title()}{animal.title()}"
 
-    def gen():
-        yield ServerSentEventGenerator.execute_script(
-            f"setTimeout(() => window.location = '/room/{room_name}')"
-        )
-
-    return SSE(gen())
+    yield SSE.redirect(f"/room/{room_name}")
 
 
 @app.get("/room/{room_name}", response_class=HTMLResponse)
@@ -185,49 +175,35 @@ class HoverPos(BaseModel):
 
 
 @app.get("/room/{room_name}/stream")
+@datastar_response
 async def stream(request: Request, room_name: str, session_id: SessionDep):
-    async def gen():
+    try:
+        state = await kv.get(f"{room_name}.state")
+    except nats.js.errors.KeyNotFoundError:
+        # Room no longer exists
+        yield SSE.redirect("/")
+        return
+    board: Board = pickle.loads(state.value)
+    watcher = await kv.watch(f"{room_name}.>")
+    hovers = {}
+    while True:
         try:
-            state = await kv.get(f"{room_name}.state")
-        except nats.js.errors.KeyNotFoundError:
-            # Room no longer exists
-            yield ServerSentEventGenerator.execute_script(
-                "window.location.replace('/')"
-            )
-            return
-        board: Board = pickle.loads(state.value)
-        watcher = await kv.watch(f"{room_name}.>")
-        hovers = {}
-        while True:
-            try:
-                update = await watcher.updates(timeout=1)
-            except nats.errors.TimeoutError:
-                if board.status == GameState.IN_PROGRESS:
-                    yield ServerSentEventGenerator.merge_signals(
-                        {"_time": int(board.play_duration)},
-                    )
-                update = None
+            update = await watcher.updates(timeout=1)
+        except nats.errors.TimeoutError:
+            update = None
 
-            if not update:
-                pass
-            elif update.key.endswith(".state"):
-                board = pickle.loads(update.value)
-            else:
-                new_hover = HoverPos.model_validate_json(update.value)
-                if new_hover.session != session_id:
-                    hovers[new_hover.session] = new_hover
-                else:
-                    continue
-            if any(not h.valid for h in hovers.values()):
-                hovers = {k: v for k, v in hovers.items() if v.valid}
-            elif not update:
-                continue
+        if not update:
+            pass
+        elif update.key.endswith(".state"):
+            board = pickle.loads(update.value)
+        else:
+            new_hover = HoverPos.model_validate_json(update.value)
+            if new_hover.session != session_id:
+                hovers[new_hover.session] = new_hover
+        if any(not h.valid for h in hovers.values()):
+            hovers = {k: v for k, v in hovers.items() if v.valid}
 
-            yield ServerSentEventGenerator.merge_fragments(
-                game_fragment(room_name, board, hovers.values())
-            )
-
-    return SSE(gen())
+        yield SSE.patch_elements(game_fragment(room_name, board, hovers.values()))
 
 
 class RoomOptions(BaseModel):
